@@ -1,0 +1,2 @@
+_target_: mourat.monitoring.MonitoringViaMarkdownFiles
+filename_template: ${result_dir}/step_{step}.md

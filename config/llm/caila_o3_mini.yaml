@@ -1,0 +1,5 @@
+_target_: rally.llm.OpenAiApiLlmWithAuthorization
+url: https://caila.io/api/adapters/openai/chat/completions
+api_key: ${user_settings.caila_api_key}
+model: just-ai/openai-proxy/o3-mini
+max_concurrent_requests: 16

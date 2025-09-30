@@ -1,0 +1,6 @@
+project_path: /path/to/this/repo
+hydra_root: ${user_settings.project_path}/hydra
+hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+result_dir: ${user_settings.hydra_dir}
+
+caila_api_key: "ADD YOUR KEY"

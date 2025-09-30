@@ -1,0 +1,11 @@
+[tool.pylint]
+max-line-length = 88
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = [
+    "missing-docstring",      # Disable docstring requirements
+    "too-few-public-methods", # Allow classes with few methods
+]
+
+[tool.mypy]
+disable_error_code = ["import-untyped"]
