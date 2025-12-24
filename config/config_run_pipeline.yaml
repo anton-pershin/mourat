@@ -3,9 +3,8 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/local@filter_llm
-  - llm/caila_o3_mini@scorer_llm
-  - llm/local@proposal_llm
+  - llm/local@fast_llm
+  - llm/local@slow_llm
 
 project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
@@ -16,87 +15,87 @@ paper_topic: "ADD YOUR KEYWORDS FOR SEARCH"
 
 problem_being_addressed: "ADD A DETAILED DESCRIPTION OF THE PROBLEM YOU ARE SOLVING INCLUDING ASSUMPTIONS, RESTRICTIONS AND PREFERRED METHODS/TECHNOLOGIES"
 
-pipeline:
-  _target_: mourat.pipeline.Pipeline
-  functions:
-    - 
-      _target_: mourat.pipeline.ArxivPaperCollector
-      api_url: "http://export.arxiv.org/api/query" 
-      start_date: 2024-01-01
-      end_date:
-      max_results: 100
-      keywords: ${paper_topic} 
-    -
-      _target_: mourat.pipeline.BinaryPaperClassifier
-      paper_topic: ${paper_topic}
-      user_prompt_template: |
-        Below is the arXiv paper title and abstract
+functions:
+  arxiv_paper_collector:
+    _target_: mourat.pipeline.ArxivPaperCollector
+    _partial_: true
+    api_url: "http://export.arxiv.org/api/query"
+    start_date: 2024-01-01
+    end_date:
+    max_results: 10
+    keywords: ${paper_topic}
+  binary_paper_classifier:
+    _target_: mourat.pipeline.BinaryPaperClassifier
+    _partial_: true
+    paper_topic: ${paper_topic}
+    user_prompt_template: |
+      Below is the arXiv paper title and abstract
 
-        Title: {title}
+      Title: {title}
 
-        Abstract: {abstract}
+      Abstract: {abstract}
 
-        Is this paper related to {paper_topic}? Just answer yes or no, no explanation is needed.
+      Is this paper related to {paper_topic}? Just answer yes or no, no explanation is needed.
 
-      text_for_monitoring_template: |  
-        ### {title}
+    text_for_monitoring_template: |
+      ### {title}
 
-        **Link:** {link}
+      **Link:** {link}
 
-        **Abstract:** {abstract}
+      **Abstract:** {abstract}
 
-      llm: ${filter_llm}
-      system_prompt: "You are a personal assistant whose goal is to help me identify papers relevant to my research area in a long feed of recently published arXiv pre-prints."
-      progress_title: 
-    - 
-      _target_: mourat.pipeline.PaperScorer
-      problem_being_addressed: ${problem_being_addressed}
-      user_prompt_template: |
-        ### Instruction
+    system_prompt: "You are a personal assistant whose goal is to help me identify papers relevant to my research area in a long feed of recently published arXiv pre-prints."
+    progress_title:
+  paper_scorer:
+    _target_: mourat.pipeline.PaperScorer
+    _partial_: true
+    problem_being_addressed: ${problem_being_addressed}
+    user_prompt_template: |
+      ### Instruction
 
-        Below is a list of papers with titles and abstracts in the json format. Score each paper from 0 to 5 with respect to its relevance to the problem of {problem_being_addressed}. Score 0 means that there is no way a paper can be applied to this problem; score 5 means that the paper can directly be used for building a proof-of-concept. The answer should strictly follow the json format (see below).
+      Below is a list of papers with titles and abstracts in the json format. Score each paper from 0 to 5 with respect to its relevance to the problem of {problem_being_addressed}. Score 0 means that there is no way a paper can be applied to this problem; score 5 means that the paper can directly be used for building a proof-of-concept. The answer should strictly follow the json format (see below).
 
-        ### Answer format
+      ### Answer format
 
-        [
-          {{
-            "title": "...",
-            "score": ...,
-            "justification": "...",
-          }},
-          ...
-        ]
+      [
+        {{
+          "title": "...",
+          "score": ...,
+          "justification": "...",
+        }},
+        ...
+      ]
 
-        ### Papers
-        
-        {papers_as_json}
+      ### Papers
 
-      text_for_monitoring_template: |  
-        ### {title}
+      {papers_as_json}
 
-        **Link:** {link}
+    text_for_monitoring_template: |
+      ### {title}
 
-        **Score:** {score}
+      **Link:** {link}
 
-        **Justification:** {justification}
+      **Score:** {score}
 
-        **Abstract:** {abstract}
+      **Justification:** {justification}
 
-      llm: ${scorer_llm}
-      system_prompt: "You are a personal assistant whose goal is to help me identify papers relevant to my research area in a long feed of recently published arXiv pre-prints."
-      progress_title: 
-    -
-      _target_: mourat.pipeline.ScoreBasedPaperFilter
-      score_threshold: 4
-      text_for_monitoring_template: |  
-        ### {title}
+      **Abstract:** {abstract}
 
-        **Link:** {link}
+    system_prompt: "You are a personal assistant whose goal is to help me identify papers relevant to my research area in a long feed of recently published arXiv pre-prints."
+    progress_title:
+  score_based_paper_filter:
+    _target_: mourat.pipeline.ScoreBasedPaperFilter
+    _partial_: true
+    score_threshold: 4
+    text_for_monitoring_template: |
+      ### {title}
 
-        **Score:** {score}
+      **Link:** {link}
 
-        **Justification:** {justification}
+      **Score:** {score}
 
-        **Abstract:** {abstract}
-  
-  monitoring_handler: ${monitoring_handler}
+      **Justification:** {justification}
+
+      **Abstract:** {abstract}
+
+monitoring_handler: ${monitoring_handler}

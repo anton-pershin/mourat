@@ -1,5 +1,8 @@
-_target_: rally.llm.LocalLlm
-url: http://localhost:9191/v1/chat/completions
-model_family: qwen2.5
-max_concurrent_requests: 16
+_target_: pydantic_ai.models.openai.OpenAIChatModel
+_recursive_: true
+model_name: local
+provider:
+  _target_: pydantic_ai.providers.openai.OpenAIProvider
+  base_url: http://localhost:9191/v1
+  api_key: "null"
 
