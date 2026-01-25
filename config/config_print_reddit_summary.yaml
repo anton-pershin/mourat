@@ -1,0 +1,39 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/local@fast_llm
+  - llm/caila_o3_mini@slow_llm
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+
+# Reddit configuration
+reddit:
+  nontechnical_subreddits: 
+    - "ChatGPT"
+    - "OneAI"
+    - "singularity"
+    - "OpenAI"
+    - "AgentsOfAI"
+    - "GenAI4all"
+    - "accelerate"
+  technical_subreddits: 
+    - "LocalLLaMA"
+    - "MachineLearning"
+    - "computervision"
+  time_window:  # format suitable for timedelta
+    hours: 24  # collect posts from last 24 hours
+
+system_prompt: "You are a personal assistant whose goal is to help me summarize the reddit feed."
+user_prompt_template: |
+  ### Instruction
+
+  Below is a list of recent popular posts on some selected subreddits devoted to AI and collected for last 24 hours. Summarize top 10 most hyped events/conversations related to AI models, algorithms, new ideas, new technologies or novel use of old technologies. Ignore slop posts typical for social media. Each top 10 item should accompanied by a URL associated with the most representative post. To build a URL, you need to take `submission_id` and `subreddit` and substitute them in the following URL template: https://www.reddit.com/r/<subreddit>/comments/<submission_id>
+
+  ### Posts
+
+  {posts}
