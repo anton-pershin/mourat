@@ -1,0 +1,8 @@
+_target_: mourat.pipeline.SemanticScholarPaperCollector
+_partial_: true  # expect positional arguments: monitoring_handler
+mode: most_influential
+api_url: https://api.semanticscholar.org/graph/v1
+start_date: ${start_date}
+end_date:
+max_results: 30
+strict_keyword_query: ${strict_keyword_query}

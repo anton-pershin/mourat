@@ -1,0 +1,13 @@
+_target_: mourat.pipeline.ScoreBasedPaperFilter
+_partial_: true  # expect positional arguments: monitoring_handler
+score_threshold: 4
+text_for_monitoring_template: |
+  ### {title}
+
+  **Link:** {link}
+
+  **Score:** {score}
+
+  **Justification:** {justification}
+
+  **Abstract:** {abstract}

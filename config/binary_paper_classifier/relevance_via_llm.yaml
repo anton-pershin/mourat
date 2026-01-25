@@ -1,0 +1,21 @@
+_target_: mourat.pipeline.BinaryPaperClassifier
+_partial_: true  # expect positional arguments: monitoring_handler, model
+topic_name: ${topic_name}
+user_prompt_template: |
+  Below is the paper title and abstract
+
+  Title: {title}
+
+  Abstract: {abstract}
+
+  Is this paper related to {topic_name}? Just answer yes or no, no explanation is needed
+
+text_for_monitoring_template: |
+  ### {title}
+
+  **Link:** {link}
+
+  **Abstract:** {abstract}
+
+system_prompt: "You are a personal assistant whose goal is to help my identify papers relevant to my research area in a long feed of recently published pre-prints"
+progress_title:

@@ -1,0 +1,15 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/local@slow_llm
+  - query_generator: query_generator_via_llm
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+
+topic_name: "time series foundation models"
+topic_description: "We are interested in whether time series foundation models could be used for anomaly detection and time series clustering"

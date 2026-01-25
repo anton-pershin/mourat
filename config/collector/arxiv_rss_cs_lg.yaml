@@ -1,0 +1,4 @@
+_target_: mourat.pipeline.ArxivPaperCollector
+_partial_: true  # expect positional arguments: monitoring_handler, http_client
+mode: newest
+api_url: https://rss.arxiv.org/rss/cs.LG

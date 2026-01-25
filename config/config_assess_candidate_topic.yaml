@@ -1,0 +1,23 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/local@slow_llm
+  - candidate_topic_assessor: candidate_topic_assessor
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+
+candidate_topic_name: "ADD IT"
+candidate_topic_description: "ADD IT"
+
+business_products:
+  product_1:
+    product_description: "ADD IT"
+    challenges:
+      - "ADD IT"
+      - "ADD IT"
+      - "ADD IT"

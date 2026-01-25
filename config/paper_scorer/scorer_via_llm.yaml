@@ -1,0 +1,41 @@
+_target_: mourat.pipeline.PaperScorer
+_partial_: true  # expect positional arguments: monitoring_handler, model
+topic_name: ${topic_name}
+topic_description: ${topic_description}
+user_prompt_template: |
+  ### Instruction
+  
+  Below is a list of papers with titles and abstracts in the json format. Score each paper from 0 to 5 with respect to its relevance to the problem of {topic_name}. The extended description of the topic is given below, pay attention to it. Score 0 means that there is no way a paper can be applied to this problem; score 5 means that the paper can directly be used for building a proof-of-concept. The answer should strictly follow the json format (see below).
+
+  ### Topic description
+
+  {topic_description}
+
+  ### Answer format
+  
+  [
+    {{
+      "title": "...",
+      "score": "...",
+      "justification": "...",
+    }},
+    ...
+  ]
+
+  ### Papers
+
+  {papers_as_json}
+
+text_for_monitoring_template: |
+  ### {title}
+
+  **Link:** {link}
+
+  **Score:** {score}
+
+  **Justification:** {justification}
+
+  **Abstract:** {abstract}
+
+system_prompt: "You are a personal assistant whose goal is to help me identify papers relevant to my research area in a long feed of recently published pre-prints"
+progress_title:

@@ -1,0 +1,25 @@
+_target_: mourat.pipeline.CandidateTopicAssessor
+_partial_: true  # expect positional arguments: monitoring_handler, model
+system_prompt: "You are a research assistant whose role is to identify connections between academic topics and business needs"
+user_prompt_template: |
+  ### Instruction ###
+
+  Assess the relevance of the candidate topic to the specified products. Below is the candidate topic description and business product descriptions. The topic description is by no means complete so feel free to use your own knowledge about the topic to expand the description and make a fair assessment. Pay specific attention to products' challenges. Your assessment should be focused on how the candidate topic may resolve the provided challenges.
+
+  ### Candidate topic ###
+
+  {candidate_topic_name}
+
+  ### Candidate topic description ###
+  
+  {candidate_topic_description}
+
+  ### Business products ###
+
+  {business_products}
+
+text_for_monitoring_template: |
+  **Candidate topic name:** {candidate_topic_name}
+
+  **Relevance info:**
+  {relevance_info}

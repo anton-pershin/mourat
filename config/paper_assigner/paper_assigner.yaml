@@ -1,0 +1,38 @@
+_target_: mourat.pipeline.PaperAssigner
+_partial_: true  # expect positional arguments: monitoring_handler, model
+topics: |
+  [
+    {
+      "topic_name": "KV cache optimization",
+      "topic_description": "Various methods involving KV cache optimization aimed at reducing memory consumption and reducing inference latency"
+    },
+    {
+      "topic_name": "Data selection for LLMs",
+      "topic_description": "Various methods used to select high-quality data in giant text datasets assuming that training on such high-quality data will improve LLM accuracy"
+    }
+  ]
+
+user_prompt_template: |
+  ### Instruction
+
+  Below is the paper title and abstract. You need to determine whether this paper is relevant to one or several topics listed below. Return the most relevant topic whose name must coincide with one of those provided below. If there are no relevant topics, return a word None. Answer with the topic name or the word None with no additional explanation.
+
+  ### Paper
+
+  {paper}
+
+  ### Topics
+
+  {topics}
+
+text_for_monitoring_template: |
+  ### {title}
+
+  **Link:** {link}
+
+  **Abstract:** {abstract}
+
+  **Assigned topics:** {assigned_topics}
+
+system_prompt: "You are a personal assistant whose goal is to help me identify papers relevant to my research area in a long feed of recently published pre-prints"
+progress_title:

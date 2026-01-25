@@ -1,0 +1,21 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/caila_o3_mini@slow_llm
+  - llm/local@fast_llm
+  - collector: semantic_scholar
+  - binary_paper_classifier: relevance_via_llm
+  - paper_scorer: scorer_via_llm
+  - paper_filter: by_score
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+
+start_date: 2025-01-01
+strict_keyword_query: "time series foundation model"
+topic_name: "time series foundation model"
+topic_description: "We are interested in whether time series foundation models could be used for anomaly detection and time series clustering"

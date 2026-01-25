@@ -1,0 +1,26 @@
+_target_: mourat.pipeline.QueryGeneratorViaLlm
+_partial_: true  # expect positional arguments: monitoring_handler, model
+topic_name: ${topic_name}
+topic_description: ${topic_description}
+system_prompt: "You are a personal assistant whose goal is to help me identify keywords and make a set of queries which could be used to find relevant papers on Semantic Scholar"
+user_prompt_template: |
+  ### Instruction
+
+  Write the most relevant queries for the topic of {topic_name}. The extended description of the topic is given below, pay attention to it. You need to provide both general queries and specific queries. General queries will be used for bulk search where we can afford to retrieve many irrelevant papers hoping that a small number of relevant papers will be still be retrieved. Specific queries will be used for precise search where we hope to find a small number of extremely relevant papers. All the queries must be short (no more than 4 words) and should be made of keywords and relevant technologies and methods.
+
+  ### Topic description
+
+  {topic_description}
+
+text_for_monitoring_template: |
+  # Queries
+  
+  **Topic name:** {topic_name}
+
+  **Topic description:** {topic_description}
+
+  **General queries:**
+  {general_queries}
+
+  **Specific queries:**
+  {specific_queries}

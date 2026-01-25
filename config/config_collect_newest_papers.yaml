@@ -1,0 +1,14 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/local@slow_llm
+  - llm/local@fast_llm
+  - collector: arxiv_rss_cs_lg
+  - paper_assigner: paper_assigner
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
