@@ -64,7 +64,7 @@ class ScoredPaperInfoCollection(BaseModel):
     papers: list[ScoredPaperInfo]
 
 
-ArxivSearchMode: TypeAlias = Literal["newest", "most_relevant"]
+ArxivSearchMode: TypeAlias = Literal["newest", "latest", "most_relevant"]
 
 
 class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
@@ -78,12 +78,18 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
         end_date: str | None = None,  # YYYY-MM-DD
         max_results: int | None = None,
         keywords: str | None = None,
+        search_query: str | None = None,
+        sort_by: str = "submittedDate",
+        sort_order: str = "descending",
     ) -> None:
         self.http_client = http_client
         self.api_url = api_url
+        self.start_date: datetime.date | None = None
         if start_date is None:
             if mode == "most_relevant":
                 raise ValueError(f"Mode '{mode}' implies that start_date is set")
+        else:
+            self.start_date = datetime.date.fromisoformat(start_date)
 
         if end_date is None:
             self.end_date: datetime.date = datetime.date.today()
@@ -92,9 +98,13 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
 
         self.max_results = max_results
         self.keywords = keywords
+        self.search_query = search_query
+        self.sort_by = sort_by
+        self.sort_order = sort_order
         self.mode = mode
         self.mode_to_handler = {
             "newest": self._handle_newest_mode,
+            "latest": self._handle_latest_mode,
             "most_relevant": self._handle_most_relevant_mode,
         }
 
@@ -142,6 +152,35 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
 
         return output
 
+    def _handle_latest_mode(self) -> PaperInfoCollection:
+        if self.max_results is None:
+            raise ValueError(f"Mode '{self.mode}' implies that max_results is set")
+
+        search_query = self.search_query or self.keywords
+        if search_query is None:
+            raise ValueError(
+                f"Mode '{self.mode}' implies that search_query or keywords is set"
+            )
+
+        request_data = {
+            "search_query": search_query,
+            "sortBy": self.sort_by,
+            "sortOrder": self.sort_order,
+            "max_results": self.max_results,
+        }
+
+        r: httpx.Response = self.http_client.get(
+            self.api_url,
+            params=request_data,
+        )
+
+        feed = feedparser.parse(r.text)
+        output = PaperInfoCollection(papers=[])
+        for entry in feed.entries:
+            output.papers.append(self._arxiv_entry_to_paper_info(entry))
+
+        return output
+
     def _handle_most_relevant_mode(self) -> PaperInfoCollection:
         output = PaperInfoCollection(papers=[])
         alread_processed_titles = set()
@@ -158,7 +197,7 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
         date_range += self.end_date.strftime("%Y%m%d") + "0000"
         date_range += "]"
 
-        serach_query += f"submittedDate:{date_range}"
+        search_query += f"submittedDate:{date_range}"
 
         request_data = {
             "search_query": search_query,
@@ -193,6 +232,39 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
             )
 
         return output
+
+    @staticmethod
+    def _arxiv_entry_to_paper_info(entry: Any) -> PaperInfo:
+        authors = None
+        if "authors" in entry:
+            authors = [
+                normalize_author_name(author_data["name"])
+                for author_data in entry.authors
+            ]
+
+        date_data = getattr(entry, "published_parsed", None)
+        if date_data is None:
+            date_data = getattr(entry, "updated_parsed", None)
+
+        publication_date = None
+        if date_data is not None:
+            publication_date = datetime.date(
+                year=date_data.tm_year,
+                month=date_data.tm_mon,
+                day=date_data.tm_mday,
+            )
+
+        abstract = getattr(entry, "summary", None)
+        if abstract is None:
+            abstract = getattr(entry, "description", "")
+
+        return PaperInfo(
+            title=entry.title.replace("\n", " "),
+            link=entry.link,
+            abstract=abstract.replace("\n", " ").strip(),
+            authors=authors,
+            publication_date=publication_date,
+        )
 
 
 SemanticScholarSearchMode: TypeAlias = Literal["newest", "most_relevant", "most_influential"]
