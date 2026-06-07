@@ -28,7 +28,11 @@ class Function(Generic[InputT, OutputT], ABC):
 
     def __call__(self, data: InputT, step_id: str) -> OutputT:
         output, text_for_monitoring = self._run(data)
-        self.monitoring_handler(step=step_id, text_for_monitoring=text_for_monitoring)
+        self.monitoring_handler(
+            step=step_id,
+            text_for_monitoring=text_for_monitoring,
+            data=output,
+        )
         return output
 
     @abstractmethod
