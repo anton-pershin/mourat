@@ -19,6 +19,12 @@ class MonitoringHandler(ABC):
     ) -> None:
         raise NotImplementedError
 
+    def start_step(self, step: str) -> None:
+        pass
+
+    def append_data(self, step: str, data: Any) -> None:
+        pass
+
 
 class MonitoringViaMarkdownFiles(MonitoringHandler):
     def __init__(self, filename_template: str) -> None:
@@ -53,6 +59,20 @@ class MonitoringViaJsonlFiles(MonitoringHandler):
         with open(filename, "w", encoding="utf-8") as f:
             for record in self._to_records(data):
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def start_step(self, step: str) -> None:
+        filename = Path(self.filename_template.format(step=step))
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        filename.write_text("", encoding="utf-8")
+
+    def append_data(self, step: str, data: Any) -> None:
+        filename = Path(self.filename_template.format(step=step))
+        filename.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(filename, "a", encoding="utf-8") as f:
+            for record in self._to_records(data):
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
 
     def _to_records(self, data: Any | None) -> list[dict[str, Any]]:
         if data is None:

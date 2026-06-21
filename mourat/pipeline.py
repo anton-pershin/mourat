@@ -25,15 +25,21 @@ OutputT = TypeVar("OutputT")
 class Function(Generic[InputT, OutputT], ABC):
     def __init__(self, monitoring_handler: MonitoringHandler) -> None:
         self.monitoring_handler = monitoring_handler
+        self.step_id: str | None = None
 
     def __call__(self, data: InputT, step_id: str) -> OutputT:
-        output, text_for_monitoring = self._run(data)
-        self.monitoring_handler(
-            step=step_id,
-            text_for_monitoring=text_for_monitoring,
-            data=output,
-        )
-        return output
+        self.step_id = step_id
+        self.monitoring_handler.start_step(step=step_id)
+        try:
+            output, text_for_monitoring = self._run(data)
+            self.monitoring_handler(
+                step=step_id,
+                text_for_monitoring=text_for_monitoring,
+                data=output,
+            )
+            return output
+        finally:
+            self.step_id = None
 
     @abstractmethod
     def _run(self, data: InputT) -> tuple[OutputT, str]:
@@ -134,25 +140,9 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
 
         feed = feedparser.parse(r.text)
         for entry in feed.entries:
-            link = entry.link
-            title = entry.title.replace("\n", " ")
-            abstract = entry.description.split("\n")[1][10:]
-            authors = [normalize_author_name(author_data["name"]) for author_data in entry.authors]
-            publication_date = datetime.date(
-                year=entry.published_parse.tm_year,
-                month=entry.published_parse.tm_mon,
-                day=entry.published_parse.tm_mday,
-            )
-
-            output.papers.append(
-                PaperInfo(
-                    title=title,
-                    link=link,
-                    abstract=abstract,
-                    authors=authors,
-                    publication_date=publication_date,
-                )
-            )
+            output.papers.append(self._arxiv_entry_to_paper_info(entry))
+            if self.max_results is not None and len(output.papers) >= self.max_results:
+                break
 
         return output
 
@@ -215,25 +205,9 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
 
         feed = feedparser.parse(r.text)
         for entry in feed.entries:
-            link = entry.link
-            title = entry.title.replace("\n", " ")
-            abstract = entry.description.split("\n")[1][10:]
-            authors = [normalize_author_name(author_data["name"]) for author_data in entry.authors]
-            publication_date = datetime.date(
-                year=entry.published_parse.tm_year,
-                month=entry.published_parse.tm_mon,
-                day=entry.published_parse.tm_mday,
-            )
-
-            output.papers.append(
-                PaperInfo(
-                    title=title,
-                    link=link,
-                    abstract=abstract,
-                    authors=authors,
-                    publication_date=publication_date,
-                )
-            )
+            output.papers.append(self._arxiv_entry_to_paper_info(entry))
+            if self.max_results is not None and len(output.papers) >= self.max_results:
+                break
 
         return output
 
@@ -535,6 +509,7 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
     ) -> None:
         self.agent = Agent(model, output_type=str, system_prompt=system_prompt)
         self.topics = topics
+        self.valid_topics = self._parse_valid_topics(topics)
         self.user_prompt_template = user_prompt_template
         self.text_for_monitoring_template = text_for_monitoring_template
         self.progress_title = progress_title
@@ -557,8 +532,8 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
                     print(f"Failed to validate model answer. Remove paper '{p.title}'")
                     continue
 
-            relevant_topic = result.output.strip(" \n\t\r*.#").lower()
-            if relevant_topic != "none":
+            relevant_topic = self._parse_relevant_topic(result.output)
+            if relevant_topic is not None:
                 ap = AssignedPaperInfo(
                     title=p.title,
                     link=p.link,
@@ -569,6 +544,9 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
                     assigned_topics=[relevant_topic],
                 )
                 output.papers.append(ap)
+                if self.step_id is not None:
+                    self.monitoring_handler.append_data(step=self.step_id, data=ap)
+
                 text_for_monitoring += self.text_for_monitoring_template.format(
                     title=p.title,
                     link=p.link,
@@ -577,6 +555,25 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
                 )
 
         return output, text_for_monitoring
+
+    @staticmethod
+    def _normalize_topic_name(topic_name: str) -> str:
+        return topic_name.strip(" \n\t\r*.#\"'`:-").lower()
+
+    @classmethod
+    def _parse_valid_topics(cls, topics: str) -> dict[str, str]:
+        topic_data = json.loads(topics)
+        return {
+            cls._normalize_topic_name(topic["topic_name"]): topic["topic_name"]
+            for topic in topic_data
+        }
+
+    def _parse_relevant_topic(self, model_output: str) -> str | None:
+        normalized_output = self._normalize_topic_name(model_output)
+        if normalized_output == "none":
+            return None
+
+        return self.valid_topics.get(normalized_output)
 
 
 class PaperScoredByAgent(BaseModel):
