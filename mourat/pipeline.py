@@ -518,6 +518,10 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
     def _run(self, data: PaperInfoCollection) -> tuple[AssignedPaperInfoCollection, str]:
         text_for_monitoring = ""
         output = AssignedPaperInfoCollection(papers=[])
+        debug_step_id = None
+        if self.step_id is not None:
+            debug_step_id = f"{self.step_id}_debug"
+            self.monitoring_handler.start_step(step=debug_step_id)
 
         for p in data.papers:
             with capture_run_messages() as messages:
@@ -530,9 +534,33 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
                     )
                 except UnexpectedModelBehavior as e:
                     print(f"Failed to validate model answer. Remove paper '{p.title}'")
+                    if debug_step_id is not None:
+                        self.monitoring_handler.append_data(
+                            step=debug_step_id,
+                            data={
+                                "title": p.title,
+                                "link": p.link,
+                                "raw_model_output": None,
+                                "parsed_topic": None,
+                                "accepted": False,
+                                "error": str(e),
+                            },
+                        )
                     continue
 
             relevant_topic = self._parse_relevant_topic(result.output)
+            if debug_step_id is not None:
+                self.monitoring_handler.append_data(
+                    step=debug_step_id,
+                    data={
+                        "title": p.title,
+                        "link": p.link,
+                        "raw_model_output": result.output,
+                        "parsed_topic": relevant_topic,
+                        "accepted": relevant_topic is not None,
+                    },
+                )
+
             if relevant_topic is not None:
                 ap = AssignedPaperInfo(
                     title=p.title,
