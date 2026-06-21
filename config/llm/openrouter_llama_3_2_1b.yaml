@@ -1,0 +1,7 @@
+_target_: pydantic_ai.models.openai.OpenAIChatModel
+_recursive_: true
+model_name: meta-llama/llama-3.2-1b-instruct
+provider:
+  _target_: pydantic_ai.providers.openai.OpenAIProvider
+  base_url: https://openrouter.ai/api/v1
+  api_key: ${oc.env:OPENROUTER_API_KEY}
