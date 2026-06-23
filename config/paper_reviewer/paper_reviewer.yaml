@@ -1,0 +1,47 @@
+_target_: mourat.pipeline.PaperReviewer
+_partial_: true  # expect positional arguments: monitoring_handler, model
+topics: ${paper_assigner.topics}
+min_relevance_score: 4
+user_prompt_template: |
+  ### Instruction
+
+  Below is a paper that was selected by a fast and conservative LLM as potentially relevant to one of the assigned topics.
+  Re-check this decision carefully using a slower and more accurate model.
+
+  Return a structured answer with:
+  - is_relevant: true only if the paper is genuinely relevant to one of the assigned topics
+  - topic_name: one of the assigned topics, or null if not relevant
+  - relevance_score: integer from 0 to 5
+  - justification: short explanation of the decision
+
+  Score 0 means unrelated. Score 5 means directly useful for the assigned topic.
+
+  ### Paper
+
+  {paper}
+
+  ### Assigned topics
+
+  {assigned_topics}
+
+  ### All available topic descriptions
+
+  {topics}
+
+text_for_monitoring_template: |
+  ### {title}
+
+  **Link:** {link}
+
+  **Assigned topics:** {assigned_topics}
+
+  **Review topic:** {review_topic}
+
+  **Score:** {relevance_score}
+
+  **Justification:** {justification}
+
+  **Abstract:** {abstract}
+
+system_prompt: "You are a research assistant whose goal is to carefully verify whether arXiv papers are genuinely relevant to the assigned research topics"
+progress_title:

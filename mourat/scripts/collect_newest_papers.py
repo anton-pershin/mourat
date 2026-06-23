@@ -4,15 +4,20 @@ from pydantic_ai.models.openai import OpenAIChatModel
 import httpx
 
 from mourat.monitoring import MonitoringHandler
-from mourat.pipeline import ArxivPaperCollector, PaperAssigner, PaperInfoCollection
+from mourat.pipeline import (
+    ArxivPaperCollector,
+    PaperAssigner,
+    PaperInfoCollection,
+    PaperReviewer,
+)
 from mourat.utils.common import get_config_path
 
 CONFIG_NAME = "config_collect_newest_papers"
 
 
 def collect_newest_papers(cfg: DictConfig) -> None:
-    slow_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.slow_llm)
-    fast_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.fast_llm)
+    slow_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.slow_llm)
+    fast_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.fast_llm)
 
     monitoring_handler: MonitoringHandler = hydra.utils.instantiate(cfg.monitoring_handler)
 
@@ -26,6 +31,7 @@ def collect_newest_papers(cfg: DictConfig) -> None:
 
     arxiv_paper_collector: ArxivPaperCollector = hydra.utils.instantiate(cfg.collector)(monitoring_handler, http_client)
     paper_assigner: PaperAssigner = hydra.utils.instantiate(cfg.paper_assigner)(monitoring_handler, fast_llm)
+    paper_reviewer: PaperReviewer = hydra.utils.instantiate(cfg.paper_reviewer)(monitoring_handler, slow_llm)
 
     # Step 1: collect the recent feed from arxiv
     step_id = "1"
@@ -34,6 +40,10 @@ def collect_newest_papers(cfg: DictConfig) -> None:
     # Step 2: assign papers to topics
     step_id = "2"
     paper_info = paper_assigner(paper_info, step_id=step_id)
+
+    # Step 3: review the fast shortlist with the slow LLM
+    step_id = "3"
+    paper_info = paper_reviewer(paper_info, step_id=step_id)
 
 
 if __name__ == "__main__":

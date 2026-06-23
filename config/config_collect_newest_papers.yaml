@@ -7,6 +7,7 @@ defaults:
   - llm/local@fast_llm
   - collector: arxiv_rss_cs_lg
   - paper_assigner: paper_assigner
+  - paper_reviewer: paper_reviewer
 
 project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
