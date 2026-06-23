@@ -11,8 +11,8 @@ CONFIG_NAME = "config_collect_recent_influential_papers"
 
 
 def collect_recent_influential_papers(cfg: DictConfig) -> None:
-    slow_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.slow_llm)
-    fast_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.fast_llm)
+    slow_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.slow_llm)
+    fast_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.fast_llm)
 
     monitoring_handler: MonitoringHandler = hydra.utils.instantiate(cfg.monitoring_handler)
 

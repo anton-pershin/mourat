@@ -5,10 +5,12 @@ import httpx
 
 from mourat.monitoring import MonitoringHandler
 from mourat.pipeline import (
+    AssignedPaperInfoCollection,
     ArxivPaperCollector,
     PaperAssigner,
     PaperInfoCollection,
     PaperReviewer,
+    ReviewedPaperInfoCollection,
 )
 from mourat.utils.common import get_config_path
 
@@ -39,11 +41,17 @@ def collect_newest_papers(cfg: DictConfig) -> None:
 
     # Step 2: assign papers to topics
     step_id = "2"
-    paper_info = paper_assigner(paper_info, step_id=step_id)
+    assigned_paper_info: AssignedPaperInfoCollection = paper_assigner(
+        paper_info,
+        step_id=step_id,
+    )
 
     # Step 3: review the fast shortlist with the slow LLM
     step_id = "3"
-    paper_info = paper_reviewer(paper_info, step_id=step_id)
+    _reviewed_paper_info: ReviewedPaperInfoCollection = paper_reviewer(
+        assigned_paper_info,
+        step_id=step_id,
+    )
 
 
 if __name__ == "__main__":
