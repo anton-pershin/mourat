@@ -1,61 +1,85 @@
 # mourat
+
 LLM-based pipeline for paper review
 
 ## Getting started
 
 1. Create a virtual environment, e.g.
+
 ```bash
 conda create -n mourat python=3.13
 conda activate mourat
 ```
+
 2. Install necessary packages
+
 ```bash
 pip install -r requirements.txt
 ```
-3. Set up `/config/user_settings/user_settings.yaml`. Currently, the config relies on Caila API but it is trivial to modify it to your needs
-4. Run one of the scripts `/mourat/scripts/XXX.py` and do not forget to modify the corresponding config file in `/config/config_XXX.yaml'
+
+3. Set up `/config/user_settings/user_settings.yaml`. Specify `project_path` and
+   any API keys required by the model configurations you use.
+4. Run one of the scripts from `/mourat/scripts/` and modify the corresponding
+   `/config/config_XXX.yaml` file when necessary.
+
 ```bash
-python kygs/scripts/XXX.py
+python mourat/scripts/XXX.py
 ```
 
 ⚠️  DO NOT commit your `user_settings.yaml`
 
 ## Scripts
 
-### `run_pipeline.py`
+### `collect_newest_papers.py`
 
-Runs a configurable pipeline for collecting, filtering, and scoring arXiv papers based on their relevance to your research topic.
+Collects recent papers from arXiv and selects papers relevant to the topics
+configured in `config/paper_assigner/paper_assigner.yaml`.
 
-#### Configuration
+The pipeline consists of three steps:
 
-1. In `user_settings.yaml`, set up your:
-   ```yaml
-   project_path: /path/to/your/project
-   caila_api_key: "your-caila-api-key"  # Required for paper scoring
-   ```
+1. Collect recent papers from arXiv.
+2. Assign potentially relevant papers to topics using a fast LLM.
+3. Review the resulting shortlist using a slower and more accurate LLM.
 
-2. In `config_run_pipeline.yaml`, modify:
-   - `paper_topic`: define your research area (e.g., "bio-inspired visual processing")
-   - `problem_being_addressed`: specify your concrete research problem
-   - Pipeline parameters:
-     - ArxivPaperCollector: `start_date`, `end_date`, `max_results`. ArXiv API has some stupid bug: sometimes, it outputs significantly less papers than specified by `max_results`. Incrementing `max_results` by 10 usually helps
-     - BinaryPaperClassifier: no changes needed in general
-     - PaperScorer: no changes needed in general
-     - ScoreBasedPaperFilter: set `score_threshold` (default: 4)
+The fast and slow models and the collector are selected in
+`config/config_collect_newest_papers.yaml`. By default, both models use the
+OpenAI-compatible local endpoint configured in `config/llm/local.yaml`.
+Alternative model configurations are available in `config/llm/`.
+
+Run the script from the repository root:
+
+```bash
+python mourat/scripts/collect_newest_papers.py
+```
+
+This default command requires an OpenAI-compatible model service running at
+`http://localhost:9191/v1`. To run the pipeline with the included OpenRouter
+configurations instead, export your API key and select the fast and slow models:
+
+```bash
+export OPENROUTER_API_KEY="your-api-key"
+
+python mourat/scripts/collect_newest_papers.py \
+  '+llm@fast_llm=openrouter_nemotron_3_nano' \
+  '+llm@slow_llm=openrouter_owl_alpha' \
+  'collector=arxiv_api_latest_cs_lg'
+```
+
+The API key is read from the environment and must not be committed.
 
 #### Output
 
-The pipeline generates files in `${result_dir}` (default: `hydra_root/YYYY-MM-DD/HH-MM-SS/`) with step-by-step results (the filename and format are specified by `monitoring_handler`):
+The pipeline stores its results in `${result_dir}` (by default,
+`hydra/YYYY-MM-DD/HH-MM-SS/`) as JSONL files:
 
-1. **ArXiv paper collection**
-   - Title and abstract of each paper from arXiv
-   - Direct link to the paper
+1. `step_1.jsonl`: papers collected from arXiv.
+2. `step_2.jsonl`: papers accepted by the fast LLM.
+3. `step_2_debug.jsonl`: the fast LLM response and acceptance decision for each
+   processed paper.
+4. `step_3.jsonl`: papers accepted by the slow LLM.
+5. `step_3_debug.jsonl`: the slow LLM review and acceptance decision for each
+   paper from the shortlist.
 
-2. **Classification results**
-   - Filter out the papers irrelevant to `paper_topic`, the structure of the content remains the same
-
-3. **Scoring Results**
-   - Add score (0-5) and detailed justification to each paper
-
-4. **Final Filtered Results**
-   - Filter out the papers with scores ≥ threshold (default: 4)
+If no papers are accepted during step 2, both `step_2.jsonl` and
+`step_3.jsonl` will be empty. Use `step_2_debug.jsonl` to inspect the fast LLM
+decisions.
