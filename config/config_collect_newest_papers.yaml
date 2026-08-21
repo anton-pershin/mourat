@@ -2,11 +2,12 @@ defaults:
   - _self_
   - user_settings: user_settings
   - hydra: base
-  - monitoring_handler: via_md_files
+  - monitoring_handler: via_jsonl_files
   - llm/local@slow_llm
   - llm/local@fast_llm
   - collector: arxiv_rss_cs_lg
   - paper_assigner: paper_assigner
+  - paper_reviewer: paper_reviewer
 
 project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}

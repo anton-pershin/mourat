@@ -4,14 +4,14 @@ from pydantic_ai.models.openai import OpenAIChatModel
 import httpx
 
 from mourat.monitoring import MonitoringHandler
-from mourat.pipeline import QueryGeneratorViaLlm
+from mourat.pipeline import QueryGeneratorViaLlm, QueryInfo
 from mourat.utils.common import get_config_path
 
 CONFIG_NAME = "config_generate_queries"
 
 
 def generate_queries(cfg: DictConfig) -> None:
-    slow_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.slow_llm)
+    slow_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.slow_llm)
 
     monitoring_handler: MonitoringHandler = hydra.utils.instantiate(cfg.monitoring_handler)
 

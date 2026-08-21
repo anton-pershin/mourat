@@ -1,0 +1,8 @@
+_target_: mourat.pipeline.ArxivPaperCollector
+_partial_: true  # expect positional arguments: monitoring_handler, http_client
+mode: latest
+api_url: https://export.arxiv.org/api/query
+search_query: cat:cs.LG
+sort_by: submittedDate
+sort_order: descending
+max_results: 10

@@ -11,7 +11,7 @@ CONFIG_NAME = "config_assess_candidate_topic"
 
 
 def assess_candidate_topic(cfg: DictConfig) -> None:
-    slow_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.slow_llm)
+    slow_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.slow_llm)
 
     monitoring_handler: MonitoringHandler = hydra.utils.instantiate(cfg.monitoring_handler)
 
