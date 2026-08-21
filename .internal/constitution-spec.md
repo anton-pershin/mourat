@@ -120,7 +120,7 @@ flowchart LR
 
 1. **Refactor existing scripts into modular components** — decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure.
 2. **Build content database layer** — implement jsonl-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, and topics.
-3. **Implement enricher** - create a new module for web content items to find their details on the Web.
+3. **Build collect_posts with enricher** - implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web.
 4. **Implement tool registry** — create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration.
 5. **Add e2e tests** — write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates.
 6. **Add benchmark tests** — implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min).
