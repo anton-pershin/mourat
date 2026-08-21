@@ -3,7 +3,7 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/local@slow_llm
+  - llm/caila_qwen3_8b@slow_llm
   - candidate_topic_assessor: candidate_topic_assessor
 
 project_path: ${user_settings.project_path}

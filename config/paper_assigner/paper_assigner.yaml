@@ -1,4 +1,4 @@
-_target_: mourat.pipeline.PaperAssigner
+_target_: mourat.assigners.PaperAssigner
 _partial_: true  # expect positional arguments: monitoring_handler, model
 topics: |
   [

@@ -1,4 +1,4 @@
-_target_: mourat.pipeline.PaperScorer
+_target_: mourat.scorers.PaperScorer
 _partial_: true  # expect positional arguments: monitoring_handler, model
 topic_name: ${topic_name}
 topic_description: ${topic_description}

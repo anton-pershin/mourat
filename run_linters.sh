@@ -1,11 +1,11 @@
-black mourat/
+black project_name/
 
-isort mourat/
+isort project_name/
 
 printf "\nPress any key to continue to pylint...\n"
 read -n 1 -s -r
-pylint mourat/
+pylint project_name/
 
 printf "\nPress any key to continue to mypy...\n"
 read -n 1 -s -r
-mypy mourat/
+mypy project_name/

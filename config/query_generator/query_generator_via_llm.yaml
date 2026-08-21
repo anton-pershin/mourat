@@ -1,4 +1,4 @@
-_target_: mourat.pipeline.QueryGeneratorViaLlm
+_target_: mourat.generators.QueryGeneratorViaLlm
 _partial_: true  # expect positional arguments: monitoring_handler, model
 topic_name: ${topic_name}
 topic_description: ${topic_description}

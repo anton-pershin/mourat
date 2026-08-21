@@ -1,0 +1,7 @@
+_target_: pydantic_ai.models.openai.OpenAIChatModel
+_recursive_: true
+model_name: qwen/qwen3-8b
+provider:
+  _target_: pydantic_ai.providers.openai.OpenAIProvider
+  base_url: https://caila.io/api/openai/v1
+  api_key: ${user_settings.caila_api_key}

@@ -1,4 +1,4 @@
-_target_: mourat.pipeline.SemanticScholarPaperCollector
+_target_: mourat.collectors.semantic_scholar.SemanticScholarPaperCollector
 _partial_: true  # expect positional arguments: monitoring_handler
 mode: most_influential
 api_url: https://api.semanticscholar.org/graph/v1

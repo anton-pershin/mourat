@@ -1,4 +1,4 @@
-_target_: mourat.pipeline.BinaryPaperClassifier
+_target_: mourat.classifiers.BinaryPaperClassifier
 _partial_: true  # expect positional arguments: monitoring_handler, model
 topic_name: ${topic_name}
 user_prompt_template: |

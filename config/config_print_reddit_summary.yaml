@@ -3,8 +3,8 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/local@fast_llm
-  - llm/caila_o3_mini@slow_llm
+  - llm/caila_qwen3_8b@fast_llm
+  - llm/caila_qwen3_8b@slow_llm
 
 project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}

@@ -3,4 +3,10 @@ hydra_root: ${user_settings.project_path}/hydra
 hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 result_dir: ${user_settings.hydra_dir}
 
-caila_api_key: "ADD YOUR KEY"
+caila_api_key: "YOUR_API_KEY" 
+
+reddit:
+    client_id: YOUR_CLIENT_ID
+    client_secret: YOUR_CLIENT_SECRET
+    user_agent: python 
+

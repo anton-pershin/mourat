@@ -1,20 +1,26 @@
+import httpx
 import hydra
 from omegaconf import DictConfig
 from pydantic_ai.models.openai import OpenAIChatModel
-import httpx
 
+from mourat.classifiers import BinaryPaperClassifier
+from mourat.collectors.semantic_scholar import SemanticScholarPaperCollector
+from mourat.data_models import PaperInfoCollection, ScoredPaperInfoCollection
+from mourat.filters import ScoreBasedPaperFilter
 from mourat.monitoring import MonitoringHandler
-from mourat.pipeline import SemanticScholarPaperCollector, BinaryPaperClassifier, PaperScorer, ScoreBasedPaperFilter, ScoredPaperInfoCollection, PaperInfoCollection
+from mourat.scorers import PaperScorer
 from mourat.utils.common import get_config_path
 
 CONFIG_NAME = "config_collect_recent_influential_papers"
 
 
 def collect_recent_influential_papers(cfg: DictConfig) -> None:
-    slow_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.slow_llm)
-    fast_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.fast_llm)
+    slow_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.slow_llm)
+    fast_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.fast_llm)
 
-    monitoring_handler: MonitoringHandler = hydra.utils.instantiate(cfg.monitoring_handler)
+    monitoring_handler: MonitoringHandler = hydra.utils.instantiate(
+        cfg.monitoring_handler
+    )
 
     http_client = httpx.Client(
         verify=False,
@@ -24,10 +30,18 @@ def collect_recent_influential_papers(cfg: DictConfig) -> None:
         ),
     )
 
-    ss_paper_collector: SemanticScholarPaperCollector = hydra.utils.instantiate(cfg.collector)(monitoring_handler, http_client)
-    binary_paper_classifier: BinaryPaperClassifier = hydra.utils.instantiate(cfg.binary_paper_classifier)(monitoring_handler, fast_llm)
-    paper_scorer: PaperScorer = hydra.utils.instantiate(cfg.paper_scorer)(monitoring_handler, slow_llm)
-    score_based_paper_filter: ScoreBasedPaperFilter = hydra.utils.instantiate(cfg.paper_filter)(monitoring_handler)
+    ss_paper_collector: SemanticScholarPaperCollector = hydra.utils.instantiate(
+        cfg.collector
+    )(monitoring_handler, http_client)
+    binary_paper_classifier: BinaryPaperClassifier = hydra.utils.instantiate(
+        cfg.binary_paper_classifier
+    )(monitoring_handler, fast_llm)
+    paper_scorer: PaperScorer = hydra.utils.instantiate(cfg.paper_scorer)(
+        monitoring_handler, slow_llm
+    )
+    score_based_paper_filter: ScoreBasedPaperFilter = hydra.utils.instantiate(
+        cfg.paper_filter
+    )(monitoring_handler)
 
     # Step 1: collect papers from semantic scholar by keywords
     step_id = "1"
@@ -39,7 +53,9 @@ def collect_recent_influential_papers(cfg: DictConfig) -> None:
 
     # Step 3: score the remaining papers with justifications
     step_id = "3"
-    scored_paper_info: ScoredPaperInfoCollection = paper_scorer(paper_info, step_id=step_id)
+    scored_paper_info: ScoredPaperInfoCollection = paper_scorer(
+        paper_info, step_id=step_id
+    )
 
     # Step 4: drop the papers with low scores
     step_id = "4"

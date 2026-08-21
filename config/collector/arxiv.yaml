@@ -1,4 +1,4 @@
-_target_: mourat.pipeline.ArxivPaperCollector
+_target_: mourat.collectors.arxiv.ArxivPaperCollector
 _partial_: true  # expect positional arguments: monitoring_handler, http_client
 mode: most_recent
 api_url: http://export.arxiv.org/api/query

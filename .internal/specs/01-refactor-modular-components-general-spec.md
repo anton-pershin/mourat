@@ -136,7 +136,7 @@ graph TB
 #### 6.1 Todo list
 
 1. **Extract shared data models** — move all Pydantic models from `pipeline.py` into `mourat/data_models.py`.
-2. **Extract base classes** — move `Function[InputT, OutputT]` into `mourat/base.py`; move `MonitoringHandler` stays in `mourat/monitoring.py` but remove its abstract decorator from the class-level (it's already there).
+2. **Extract base classes** — move `Function[InputT, OutputT]` into `mourat/base.py`.
 3. **Extract collectors** — split `ArxivPaperCollector` into `mourat/collectors/arxiv.py` and `SemanticScholarPaperCollector` into `mourat/collectors/semantic_scholar.py`.
 4. **Extract classifiers, scorers, assigners, filters, generators, assessors** — move each into its own module under `mourat/` (`classifiers.py`, `scorers.py`, `assigners.py`, `filters.py`, `generators.py`, `assessors.py`).
 5. **Create package `__init__` files** — set up `mourat/collectors/__init__.py` and any other subpackage inits needed.

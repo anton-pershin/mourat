@@ -3,8 +3,8 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/caila_o3_mini@slow_llm
-  - llm/local@fast_llm
+  - llm/caila_qwen3_8b@slow_llm
+  - llm/caila_qwen3_8b@fast_llm
   - collector: semantic_scholar
   - binary_paper_classifier: relevance_via_llm
   - paper_scorer: scorer_via_llm

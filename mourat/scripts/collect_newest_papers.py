@@ -1,20 +1,23 @@
+import httpx
 import hydra
 from omegaconf import DictConfig
 from pydantic_ai.models.openai import OpenAIChatModel
-import httpx
 
+from mourat.assigners import PaperAssigner
+from mourat.collectors.arxiv import ArxivPaperCollector
+from mourat.data_models import PaperInfoCollection
 from mourat.monitoring import MonitoringHandler
-from mourat.pipeline import ArxivPaperCollector, PaperAssigner, PaperInfoCollection
 from mourat.utils.common import get_config_path
 
 CONFIG_NAME = "config_collect_newest_papers"
 
 
 def collect_newest_papers(cfg: DictConfig) -> None:
-    slow_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.slow_llm)
-    fast_llm: OpenAiChatModel = hydra.utils.instantiate(cfg.fast_llm)
+    fast_llm: OpenAIChatModel = hydra.utils.instantiate(cfg.fast_llm)
 
-    monitoring_handler: MonitoringHandler = hydra.utils.instantiate(cfg.monitoring_handler)
+    monitoring_handler: MonitoringHandler = hydra.utils.instantiate(
+        cfg.monitoring_handler
+    )
 
     http_client = httpx.Client(
         verify=False,
@@ -24,8 +27,12 @@ def collect_newest_papers(cfg: DictConfig) -> None:
         ),
     )
 
-    arxiv_paper_collector: ArxivPaperCollector = hydra.utils.instantiate(cfg.collector)(monitoring_handler, http_client)
-    paper_assigner: PaperAssigner = hydra.utils.instantiate(cfg.paper_assigner)(monitoring_handler, fast_llm)
+    arxiv_paper_collector: ArxivPaperCollector = hydra.utils.instantiate(cfg.collector)(
+        monitoring_handler, http_client
+    )
+    paper_assigner: PaperAssigner = hydra.utils.instantiate(cfg.paper_assigner)(
+        monitoring_handler, fast_llm
+    )
 
     # Step 1: collect the recent feed from arxiv
     step_id = "1"
