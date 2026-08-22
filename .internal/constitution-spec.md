@@ -30,7 +30,7 @@ Each content item must be relevant to at least one of the research questions or 
 
 1. **Collection performance**: less than one hour to process 2000 raw (unfiltered) content items.
 2. **Retrieval performance**: less than one minute to search over 5000 content items.
-3. **Usability**: everything should be easy for a human to read so rely on lightweight file-based databases, preferably jsonl.
+3. **Usability**: everything should be easy for a human to read so rely on lightweight file-based databases.
 4. **Interface**: all the tools should be easy to use directly from the command line and as a tool in an agent harness.
 
 ### 3. Acceptance criteria
@@ -41,7 +41,7 @@ Each content item must be relevant to at least one of the research questions or 
 - **FR4 (content item database with retrieval):** tests for CRUD operations and retrieval by keywords, research questions, technical challenges, and research topics. FR5 (incremental database updates) is covered by these same tests.
 - **NFR1 (collection performance <1h for 2000 items):** benchmark test measuring end-to-end processing time on a 2000-item batch.
 - **NFR2 (retrieval performance <1min for 5000 items):** benchmark test measuring search time over a 5000-item database.
-- **NFR3 (jsonl-based, human-readable):** validated manually.
+- **NFR3 (file-based, human-readable):** validated manually.
 - **NFR4 (CLI + agent tool interface):** validated manually.
 
 ### 4. Insight
@@ -67,7 +67,6 @@ flowchart LR
         CollectInf["collect_influential_papers"]
         CollectPosts["collect_posts"]
         Retrieve["retrieve_content"]
-        UpdateDB["update_database"]
     end
     
     subgraph Collectors
@@ -83,14 +82,13 @@ flowchart LR
     end
     
     subgraph Storage
-        DB[(jsonl content DB)]
+        DB[(content DB)]
     end
     
     User --> CollectNew
     User --> CollectInf
     User --> CollectPosts
     User --> Retrieve
-    User --> UpdateDB
     
     CollectNew --> Arxiv
     CollectInf --> SemScholar
@@ -101,7 +99,6 @@ flowchart LR
     WebSrc --> Enrich --> Score --> DB
     
     Retrieve --> DB
-    UpdateDB --> DB
 ```
 
 #### 5.2 Core components
@@ -110,7 +107,7 @@ flowchart LR
 - **Scorer** — relevance and influence scoring modules (LLM-based or heuristic). Configurable per collection task.
 - **Filter** — relevance-based filtering to prune collected items before storage.
 - **Enricher** — fills in missing details for web-sourced posts.
-- **Content database** — jsonl-based storage with retrieval by keywords, research questions, technical challenges, and topics.
+- **Content database** — storage with retrieval by keywords, research questions, technical challenges, and topics.
 - **Tool registry** — thin layer mapping typed agent calls to Hydra-configured modules, enabling agent harness integration while keeping CLI scripts clean for human use.
 - **CLI scripts** — standalone entry points for each major operation, usable directly from the command line.
 
@@ -118,8 +115,8 @@ flowchart LR
 
 #### 6.1 Todo list
 
-1. **Refactor existing scripts into modular components** — decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure.
-2. **Build content database layer** — implement jsonl-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, and topics.
+1. **[DONE] Refactor existing scripts into modular components** — decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure.
+2. **Build content database layer** — implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, and topics.
 3. **Build collect_posts with enricher** - implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web.
 4. **Implement tool registry** — create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration.
 5. **Add e2e tests** — write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates.
