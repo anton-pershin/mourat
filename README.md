@@ -59,3 +59,70 @@ The pipeline generates files in `${result_dir}` (default: `hydra_root/YYYY-MM-DD
 
 4. **Final Filtered Results**
    - Filter out the papers with scores ≥ threshold (default: 4)
+
+## Storage layer
+
+The project includes a SQLite-based content database for storing papers, posts, research metadata, and their relevance scores.
+
+### Create the database
+
+```python
+from mourat.database import init_db
+
+conn = init_db("/path/to/mourat.db")
+conn.close()
+```
+
+This creates the file and applies the full schema (all tables, indexes, and FTS5 full-text search).
+
+### Populate research metadata
+
+Research metadata is organized into two hierarchies:
+
+**Research hierarchy:** domain → direction → object → question
+
+```python
+from mourat.database import init_db
+from mourat.database import research_domain as rd
+
+conn = init_db("/path/to/mourat.db")
+
+rd.create_research_domain(conn, "ai", "Artificial Intelligence", "Broad AI field")
+rd.create_research_direction(conn, "ai-llm", "Large Language Models", "ai")
+rd.create_research_object(conn, "ai-llm-rlhf", "RLHF", "ai-llm")
+rd.create_research_question(conn, "ai-llm-rlhf-rq1", "Does RLHF improve safety?", "ai-llm-rlhf")
+
+conn.close()
+```
+
+**Business hierarchy:** domain → product → technology → (challenges, constraints)
+
+```python
+from mourat.database import business_domain as bd
+
+bd.create_business_domain(conn, "cloud", "Cloud Computing")
+bd.create_product(conn, "cloud-storage", "Storage", "cloud")
+bd.create_technology(conn, "cloud-storage-s3", "Object Storage", "cloud-storage")
+bd.create_technical_challenge(conn, "ch-durability", "Data Durability")
+bd.add_technology_challenge(conn, "cloud-storage-s3", "ch-durability")
+
+conn.close()
+```
+
+Research topics can be linked to both technical challenges and research questions:
+
+```python
+rd.create_research_topic(conn, "topic-rlhf-safety", "RLHF for Safety")
+rd.add_topic_technical_challenge(conn, "topic-rlhf-safety", "ch-durability")
+rd.add_topic_research_question(conn, "topic-rlhf-safety", "ai-llm-rlhf-rq1")
+```
+
+### Retrieve content
+
+Once the database is populated, query it via the CLI script:
+
+```bash
+python -m mourat.scripts.retrieve_content db_path=/path/to/mourat.db query_type=keywords keyword_query="transformer"
+```
+
+Query types: `keywords`, `research_question`, `technical_challenge`, `research_topic`, `influence_score`.

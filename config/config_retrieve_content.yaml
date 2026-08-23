@@ -7,3 +7,14 @@ project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}
+db_path: ${user_settings.db_path}
+
+# Query configuration
+query_type: keywords  # keywords | research_question | technical_challenge | research_topic | influence_score
+keyword_query: ""
+research_question_id: ""
+technical_challenge_id: ""
+research_topic_id: ""
+min_influence_score: 0
+max_influence_score: 100
+min_relevance_score:

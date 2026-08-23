@@ -1,13 +1,100 @@
+"""Retrieve content items from the database via CLI."""
+
+from pathlib import Path
+
 import hydra
 from omegaconf import DictConfig
+from rich.console import Console
+from rich.table import Table
 
+from mourat.database import create_connection
+from mourat.database.query_engine import (
+    search_by_keywords,
+    search_by_research_question,
+    search_by_research_topic,
+    search_by_technical_challenge,
+    search_by_influence_score,
+)
 from mourat.utils.common import get_config_path
 
+console = Console()
 CONFIG_NAME = "config_retrieve_content"
 
 
+def run_query(conn, cfg):
+    """Execute the configured query and display results."""
+    query_type = cfg.get("query_type", "keywords")
+
+    if query_type == "keywords":
+        results = search_by_keywords(
+            conn,
+            cfg.keyword_query,
+            min_relevance=cfg.get("min_relevance_score"),
+        )
+    elif query_type == "research_question":
+        results = search_by_research_question(
+            conn,
+            cfg.research_question_id,
+            min_score=cfg.get("min_relevance_score"),
+        )
+    elif query_type == "technical_challenge":
+        results = search_by_technical_challenge(
+            conn,
+            cfg.technical_challenge_id,
+            min_score=cfg.get("min_relevance_score"),
+        )
+    elif query_type == "research_topic":
+        results = search_by_research_topic(
+            conn,
+            cfg.research_topic_id,
+            min_score=cfg.get("min_relevance_score"),
+        )
+    elif query_type == "influence_score":
+        results = search_by_influence_score(
+            conn,
+            cfg.min_influence_score,
+            max_score=cfg.get("max_influence_score", 100),
+        )
+    else:
+        console.print(f"[bold red]Unknown query type: {query_type}[/]")
+        return
+
+    if not results:
+        console.print("No content items found.")
+        return
+
+    table = Table(title=f"Found {len(results)} content item(s)")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="green")
+    table.add_column("Score", justify="right")
+    table.add_column("URL")
+
+    for item in results:
+        score = str(item["influence_score"]) if item["influence_score"] is not None else "N/A"
+        url = item["url"] or ""
+        table.add_row(item["id"], item["name"], score, url)
+
+    console.print(table)
+
+
 def retrieve_content(cfg: DictConfig) -> None:
-    print("retrieve_content")
+    db_path = cfg.get("db_path")
+    if db_path is None:
+        console.print("[bold red]Database path not set in config (db_path)[/]")
+        console.print("Set db_path in config_retrieve_content.yaml or via Hydra override.")
+        return
+
+    db_path = Path(db_path)
+    if not db_path.exists():
+        console.print(f"[bold red]Database not found: {db_path}[/]")
+        console.print("Create the database first before running retrieve_content.")
+        return
+
+    conn = create_connection(db_path)
+    try:
+        run_query(conn, cfg)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

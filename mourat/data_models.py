@@ -108,3 +108,102 @@ class CandidateTopicRelevanceInfo(BaseModel):
 
 class CandidateTopicAssessment(BaseModel):
     assessment: list[CandidateTopicRelevanceInfo]
+
+
+# -- Database entity models --
+
+
+class BusinessDomain(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class Product(BaseModel):
+    id: str
+    name: str
+    domain_id: str
+    description: str = ""
+
+
+class HighLevelTechnology(BaseModel):
+    id: str
+    name: str
+    product_id: str
+    description: str = ""
+
+
+class TechnicalChallenge(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class Constraint(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class ResearchDomain(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class ResearchDirection(BaseModel):
+    id: str
+    name: str
+    domain_id: str
+    description: str = ""
+
+
+class ResearchObject(BaseModel):
+    id: str
+    name: str
+    direction_id: str
+    description: str = ""
+
+
+class ResearchQuestion(BaseModel):
+    id: str
+    name: str
+    object_id: str
+    description: str = ""
+
+
+class ResearchTopic(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class ContentItem(BaseModel):
+    id: str
+    name: str
+    source_type_id: str
+    platform_id: str
+    influence_metric_id: str
+    description: str = ""
+    url: str | None = None
+    published_at: str | None = None
+    authors: str | None = None
+    influence_score: int | None = None
+
+
+class SourceType(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class Platform(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class InfluenceMetric(BaseModel):
+    id: str
+    name: str
+    description: str = ""
