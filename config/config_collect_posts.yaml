@@ -1,0 +1,61 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/caila_glm_5_3_flash@scoring_llm
+  - llm/caila_glm_5_3_flash@enrichment_llm
+  - collector: reddit
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+db_path: ${user_settings.db_path}
+
+# Enricher
+enricher:
+  _target_: mourat.enrichers.web_enricher.WebEnricher
+  _partial_: true  # expect positional arguments: monitoring_handler, model
+  system_prompt: ${enrichment.system_prompt}
+  model_settings:
+    timeout: ${enrichment.agent.timeout}
+  retries: ${enrichment.agent.retries}
+
+# Scorer
+scorer:
+  _target_: mourat.processors.post_scorer.PostScorer
+  _partial_: true  # expect positional arguments: monitoring_handler, model
+  rq_list: ${scoring.rq_list}
+  tc_list: ${scoring.tc_list}
+  topic_list: ${scoring.topic_list}
+  system_prompt: ${scoring.system_prompt}
+  model_settings:
+    timeout: ${scoring.agent.timeout}
+  retries: ${scoring.agent.retries}
+
+# Score filter
+score_filter:
+  _target_: mourat.filters.PostScoreFilter
+  _partial_: true  # expect positional argument: monitoring_handler
+  score_threshold: ${scoring.min_score}
+
+# Component configs
+enrichment:
+  system_prompt: >
+    You are a research assistant helping to enrich social media posts with additional context.
+    For each post, determine if enrichment is needed. Use extract_url or web_search tools as needed.
+  agent:
+    timeout: 300
+    retries: 3
+
+scoring:
+  system_prompt: >
+    You are a research relevance scorer. Score each post against the given RQs, TCs, and topics (0-100).
+  rq_list: []
+  tc_list: []
+  topic_list: []
+  min_score: 50
+  agent:
+    timeout: 300
+    retries: 3

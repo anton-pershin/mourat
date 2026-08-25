@@ -1,3 +1,12 @@
+"""DEPRECATED: Use `mourat.scripts.collect_posts` instead.
+
+This script only prints summaries to the console without persisting posts
+to the database. The replacement script `collect_posts` collects, enriches,
+scores, and saves posts to the content database.
+
+This script will be removed in a future version.
+"""
+
 import datetime
 
 import hydra

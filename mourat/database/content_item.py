@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
-
 # -- Content items --
+
 
 def create_content_item(
     conn: sqlite3.Connection,
@@ -22,9 +22,21 @@ def create_content_item(
 ) -> None:
     conn.execute(
         "INSERT INTO content_items "
-        "(id, name, description, source_type_id, platform_id, url, published_at, authors, influence_score, influence_metric_id) "
+        "(id, name, description, source_type_id, platform_id, url, published_at, "
+        "authors, influence_score, influence_metric_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (id, name, description, source_type_id, platform_id, url, published_at, authors, influence_score, influence_metric_id),
+        (
+            id,
+            name,
+            description,
+            source_type_id,
+            platform_id,
+            url,
+            published_at,
+            authors,
+            influence_score,
+            influence_metric_id,
+        ),
     )
     conn.commit()
 
@@ -50,11 +62,15 @@ def update_content_item(
     fields = []
     values = []
     for col, val in [
-        ("name", name), ("description", description),
-        ("source_type_id", source_type_id), ("platform_id", platform_id),
+        ("name", name),
+        ("description", description),
+        ("source_type_id", source_type_id),
+        ("platform_id", platform_id),
         ("influence_metric_id", influence_metric_id),
-        ("url", url), ("published_at", published_at),
-        ("authors", authors), ("influence_score", influence_score),
+        ("url", url),
+        ("published_at", published_at),
+        ("authors", authors),
+        ("influence_score", influence_score),
     ]:
         if val is not None:
             fields.append(f"{col} = ?")
@@ -78,7 +94,10 @@ def list_content_items(conn: sqlite3.Connection) -> list[dict]:
 
 # -- Source types --
 
-def create_source_type(conn: sqlite3.Connection, id: str, name: str, description: str = "") -> None:
+
+def create_source_type(
+    conn: sqlite3.Connection, id: str, name: str, description: str = ""
+) -> None:
     conn.execute(
         "INSERT INTO source_types (id, name, description) VALUES (?, ?, ?)",
         (id, name, description),
@@ -93,7 +112,10 @@ def list_source_types(conn: sqlite3.Connection) -> list[dict]:
 
 # -- Platforms --
 
-def create_platform(conn: sqlite3.Connection, id: str, name: str, description: str = "") -> None:
+
+def create_platform(
+    conn: sqlite3.Connection, id: str, name: str, description: str = ""
+) -> None:
     conn.execute(
         "INSERT INTO platforms (id, name, description) VALUES (?, ?, ?)",
         (id, name, description),
@@ -108,7 +130,10 @@ def list_platforms(conn: sqlite3.Connection) -> list[dict]:
 
 # -- Influence metrics --
 
-def create_influence_metric(conn: sqlite3.Connection, id: str, name: str, description: str = "") -> None:
+
+def create_influence_metric(
+    conn: sqlite3.Connection, id: str, name: str, description: str = ""
+) -> None:
     conn.execute(
         "INSERT INTO influence_metrics (id, name, description) VALUES (?, ?, ?)",
         (id, name, description),
@@ -123,7 +148,10 @@ def list_influence_metrics(conn: sqlite3.Connection) -> list[dict]:
 
 # -- Content item references --
 
-def add_content_item_reference(conn: sqlite3.Connection, source_id: str, target_id: str) -> None:
+
+def add_content_item_reference(
+    conn: sqlite3.Connection, source_id: str, target_id: str
+) -> None:
     conn.execute(
         "INSERT INTO content_item_references (source_id, target_id) VALUES (?, ?)",
         (source_id, target_id),
@@ -131,7 +159,9 @@ def add_content_item_reference(conn: sqlite3.Connection, source_id: str, target_
     conn.commit()
 
 
-def remove_content_item_reference(conn: sqlite3.Connection, source_id: str, target_id: str) -> None:
+def remove_content_item_reference(
+    conn: sqlite3.Connection, source_id: str, target_id: str
+) -> None:
     conn.execute(
         "DELETE FROM content_item_references WHERE source_id = ? AND target_id = ?",
         (source_id, target_id),
@@ -139,7 +169,9 @@ def remove_content_item_reference(conn: sqlite3.Connection, source_id: str, targ
     conn.commit()
 
 
-def list_content_item_references(conn: sqlite3.Connection, content_id: str) -> list[str]:
+def list_content_item_references(
+    conn: sqlite3.Connection, content_id: str
+) -> list[str]:
     rows = conn.execute(
         "SELECT target_id FROM content_item_references WHERE source_id = ?",
         (content_id,),
@@ -149,6 +181,7 @@ def list_content_item_references(conn: sqlite3.Connection, content_id: str) -> l
 
 # -- Content item ↔ technical challenges --
 
+
 def add_item_technical_challenge(
     conn: sqlite3.Connection,
     content_id: str,
@@ -157,21 +190,28 @@ def add_item_technical_challenge(
     relevance_score: int | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO item_technical_challenges (content_id, challenge_id, justification, relevance_score) VALUES (?, ?, ?, ?)",
+        "INSERT INTO item_technical_challenges "
+        "(content_id, challenge_id, justification, relevance_score) "
+        "VALUES (?, ?, ?, ?)",
         (content_id, challenge_id, justification, relevance_score),
     )
     conn.commit()
 
 
-def remove_item_technical_challenge(conn: sqlite3.Connection, content_id: str, challenge_id: str) -> None:
+def remove_item_technical_challenge(
+    conn: sqlite3.Connection, content_id: str, challenge_id: str
+) -> None:
     conn.execute(
-        "DELETE FROM item_technical_challenges WHERE content_id = ? AND challenge_id = ?",
+        "DELETE FROM item_technical_challenges "
+        "WHERE content_id = ? AND challenge_id = ?",
         (content_id, challenge_id),
     )
     conn.commit()
 
 
-def list_item_technical_challenges(conn: sqlite3.Connection, content_id: str) -> list[dict]:
+def list_item_technical_challenges(
+    conn: sqlite3.Connection, content_id: str
+) -> list[dict]:
     rows = conn.execute(
         "SELECT tc.*, itc.justification, itc.relevance_score "
         "FROM technical_challenges tc "
@@ -184,6 +224,7 @@ def list_item_technical_challenges(conn: sqlite3.Connection, content_id: str) ->
 
 # -- Content item ↔ research questions --
 
+
 def add_item_research_question(
     conn: sqlite3.Connection,
     content_id: str,
@@ -192,13 +233,17 @@ def add_item_research_question(
     relevance_score: int | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO item_research_questions (content_id, question_id, justification, relevance_score) VALUES (?, ?, ?, ?)",
+        "INSERT INTO item_research_questions "
+        "(content_id, question_id, justification, relevance_score) "
+        "VALUES (?, ?, ?, ?)",
         (content_id, question_id, justification, relevance_score),
     )
     conn.commit()
 
 
-def remove_item_research_question(conn: sqlite3.Connection, content_id: str, question_id: str) -> None:
+def remove_item_research_question(
+    conn: sqlite3.Connection, content_id: str, question_id: str
+) -> None:
     conn.execute(
         "DELETE FROM item_research_questions WHERE content_id = ? AND question_id = ?",
         (content_id, question_id),
@@ -206,7 +251,9 @@ def remove_item_research_question(conn: sqlite3.Connection, content_id: str, que
     conn.commit()
 
 
-def list_item_research_questions(conn: sqlite3.Connection, content_id: str) -> list[dict]:
+def list_item_research_questions(
+    conn: sqlite3.Connection, content_id: str
+) -> list[dict]:
     rows = conn.execute(
         "SELECT rq.*, irq.justification, irq.relevance_score "
         "FROM research_questions rq "
@@ -219,6 +266,7 @@ def list_item_research_questions(conn: sqlite3.Connection, content_id: str) -> l
 
 # -- Content item ↔ research topics --
 
+
 def add_item_research_topic(
     conn: sqlite3.Connection,
     content_id: str,
@@ -227,13 +275,17 @@ def add_item_research_topic(
     relevance_score: int | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO item_research_topics (content_id, topic_id, justification, relevance_score) VALUES (?, ?, ?, ?)",
+        "INSERT INTO item_research_topics "
+        "(content_id, topic_id, justification, relevance_score) "
+        "VALUES (?, ?, ?, ?)",
         (content_id, topic_id, justification, relevance_score),
     )
     conn.commit()
 
 
-def remove_item_research_topic(conn: sqlite3.Connection, content_id: str, topic_id: str) -> None:
+def remove_item_research_topic(
+    conn: sqlite3.Connection, content_id: str, topic_id: str
+) -> None:
     conn.execute(
         "DELETE FROM item_research_topics WHERE content_id = ? AND topic_id = ?",
         (content_id, topic_id),

@@ -48,6 +48,7 @@ disable = [
     "too-many-locals",
     "no-else-return",
     "too-many-return-statements",
+    "redefined-builtin",
 ]
 
 [tool.mypy]

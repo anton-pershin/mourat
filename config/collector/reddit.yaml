@@ -1,0 +1,24 @@
+_target_: mourat.collectors.reddit_collector.RedditPostCollector
+_partial_: true  # expect positional argument: monitoring_handler
+
+# Subreddits to collect posts from
+subreddits:
+  - "ChatGPT"
+  - "singularity"
+  - "OpenAI"
+  - "accelerate"
+  - "LocalLLaMA"
+  - "MachineLearning"
+  - "computervision"
+
+# Time window for recent posts
+time_window:
+  hours: 24
+
+# Reddit API settings
+limit_per_subreddit: 100
+max_posts_per_subreddit: 10
+
+# Filter: skip posts with no text (default: true)
+# Set to false to also collect link-only posts
+require_text: true

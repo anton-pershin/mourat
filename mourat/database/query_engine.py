@@ -5,9 +5,11 @@ from __future__ import annotations
 import sqlite3
 
 
-def search_by_keywords(conn: sqlite3.Connection, query: str, min_relevance: int | None = None) -> list[dict]:
+def search_by_keywords(
+    conn: sqlite3.Connection, query: str, min_relevance: int | None = None
+) -> list[dict]:
     """Full-text search via FTS5 with optional relevance score filter.
-    
+
     Supports boolean operators (AND, OR, NOT) and prefix matching (term*).
     """
     sql = """
@@ -27,7 +29,9 @@ def search_by_keywords(conn: sqlite3.Connection, query: str, min_relevance: int 
     return [dict(r) for r in rows]
 
 
-def search_by_research_question(conn: sqlite3.Connection, question_id: str, min_score: int | None = None) -> list[dict]:
+def search_by_research_question(
+    conn: sqlite3.Connection, question_id: str, min_score: int | None = None
+) -> list[dict]:
     """Retrieve content items linked to a research question."""
     sql = """
         SELECT ci.*
@@ -46,7 +50,9 @@ def search_by_research_question(conn: sqlite3.Connection, question_id: str, min_
     return [dict(r) for r in rows]
 
 
-def search_by_technical_challenge(conn: sqlite3.Connection, challenge_id: str, min_score: int | None = None) -> list[dict]:
+def search_by_technical_challenge(
+    conn: sqlite3.Connection, challenge_id: str, min_score: int | None = None
+) -> list[dict]:
     """Retrieve content items linked to a technical challenge."""
     sql = """
         SELECT ci.*
@@ -65,7 +71,9 @@ def search_by_technical_challenge(conn: sqlite3.Connection, challenge_id: str, m
     return [dict(r) for r in rows]
 
 
-def search_by_research_topic(conn: sqlite3.Connection, topic_id: str, min_score: int | None = None) -> list[dict]:
+def search_by_research_topic(
+    conn: sqlite3.Connection, topic_id: str, min_score: int | None = None
+) -> list[dict]:
     """Retrieve content items linked to a research topic."""
     sql = """
         SELECT ci.*
@@ -84,10 +92,14 @@ def search_by_research_topic(conn: sqlite3.Connection, topic_id: str, min_score:
     return [dict(r) for r in rows]
 
 
-def search_by_influence_score(conn: sqlite3.Connection, min_score: int, max_score: int = 100) -> list[dict]:
+def search_by_influence_score(
+    conn: sqlite3.Connection, min_score: int, max_score: int = 100
+) -> list[dict]:
     """Retrieve content items filtered by influence score range."""
     rows = conn.execute(
-        "SELECT * FROM content_items WHERE influence_score BETWEEN ? AND ? ORDER BY influence_score DESC",
+        "SELECT * FROM content_items "
+        "WHERE influence_score BETWEEN ? AND ? "
+        "ORDER BY influence_score DESC",
         (min_score, max_score),
     ).fetchall()
     return [dict(r) for r in rows]

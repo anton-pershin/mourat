@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, NonNegativeInt
 
@@ -207,3 +208,89 @@ class InfluenceMetric(BaseModel):
     id: str
     name: str
     description: str = ""
+
+
+# -- Post collection models --
+
+
+class RedditPostInfo(BaseModel):
+    """A single Reddit post for pipeline processing."""
+
+    subreddit: str
+    submission_id: str
+    title: str
+    author: str
+    date: str  # ISO format datetime string
+    url: str
+    text: str = ""
+    score: int = 0
+
+
+class RedditPostCollection(BaseModel):
+    """Collection of Reddit posts."""
+
+    posts: list[RedditPostInfo]
+
+
+# -- LLM agent output models (used by enrichment and scoring agents) --
+
+
+class EnrichmentResult(BaseModel):
+    """LLM enrichment agent output."""
+
+    enriched_text: str = Field(description="The enriched text content of the post")
+    enrichment_summary: str = Field(
+        description="Brief description of what enrichment was performed"
+    )
+
+
+class ScoreEntry(BaseModel):
+    """A single relevance score entry."""
+
+    id: str = Field(
+        description="ID of the research question, technical challenge, or topic"
+    )
+    type: Literal["rq", "tc", "topic"] = Field(
+        description="Type: 'rq', 'tc', or 'topic'"
+    )
+    score: int = Field(description="Relevance score from 0 to 100", ge=0, le=100)
+    justification: str = Field(description="Justification for the score")
+
+
+class ScoringResult(BaseModel):
+    """LLM scoring agent output."""
+
+    scores: list[ScoreEntry] = Field(
+        description="List of relevance scores for the post"
+    )
+
+
+# -- Post enrichment/scoring pipeline models --
+
+
+class EnrichedRedditPost(BaseModel):
+    """A Reddit post with enrichment metadata."""
+
+    post: RedditPostInfo
+    enrichment_summary: str = ""
+
+
+class EnrichedRedditPostCollection(BaseModel):
+    """Collection of enriched Reddit posts."""
+
+    posts: list[EnrichedRedditPost]
+
+
+class ScoredRedditPost(BaseModel):
+    """A Reddit post with relevance scores."""
+
+    post: RedditPostInfo
+    enrichment_summary: str = ""
+    relevance_scores: list[ScoreEntry] = []
+    max_score: float = 0.0
+
+
+class ScoredRedditPostCollection(BaseModel):
+    """Collection of scored Reddit posts."""
+
+    posts: list[ScoredRedditPost]

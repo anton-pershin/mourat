@@ -9,11 +9,11 @@ from rich.table import Table
 
 from mourat.database import create_connection
 from mourat.database.query_engine import (
+    search_by_influence_score,
     search_by_keywords,
     search_by_research_question,
     search_by_research_topic,
     search_by_technical_challenge,
-    search_by_influence_score,
 )
 from mourat.utils.common import get_config_path
 
@@ -70,7 +70,11 @@ def run_query(conn, cfg):
     table.add_column("URL")
 
     for item in results:
-        score = str(item["influence_score"]) if item["influence_score"] is not None else "N/A"
+        score = (
+            str(item["influence_score"])
+            if item["influence_score"] is not None
+            else "N/A"
+        )
         url = item["url"] or ""
         table.add_row(item["id"], item["name"], score, url)
 
@@ -81,7 +85,9 @@ def retrieve_content(cfg: DictConfig) -> None:
     db_path = cfg.get("db_path")
     if db_path is None:
         console.print("[bold red]Database path not set in config (db_path)[/]")
-        console.print("Set db_path in config_retrieve_content.yaml or via Hydra override.")
+        console.print(
+            "Set db_path in config_retrieve_content.yaml or via Hydra override."
+        )
         return
 
     db_path = Path(db_path)
