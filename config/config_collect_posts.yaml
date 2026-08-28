@@ -5,7 +5,9 @@ defaults:
   - monitoring_handler: via_md_files
   - llm/caila_glm_5_3_flash@scoring_llm
   - llm/caila_glm_5_3_flash@enrichment_llm
+  - llm/caila_glm_5_3_flash@classification_llm
   - collector: reddit
+  - slop_filter: default
 
 project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
@@ -34,6 +36,21 @@ scorer:
     timeout: ${scoring.agent.timeout}
   retries: ${scoring.agent.retries}
 
+# Slop classifier
+slop_classifier:
+  _target_: mourat.classifiers.PostSlopClassifier
+  _partial_: true  # expect positional arguments: monitoring_handler, model
+  batch_size: 20
+  max_text_chars: 800
+  model_settings:
+    timeout: ${slop_classification.agent.timeout}
+  retries: ${slop_classification.agent.retries}
+
+# Slop verdict filter
+slop_verdict_filter:
+  _target_: mourat.filters.SlopFilter
+  _partial_: true  # expect positional argument: monitoring_handler
+
 # Score filter
 score_filter:
   _target_: mourat.filters.PostScoreFilter
@@ -58,4 +75,9 @@ scoring:
   min_score: 50
   agent:
     timeout: 300
+    retries: 3
+
+slop_classification:
+  agent:
+    timeout: 120
     retries: 3

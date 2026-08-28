@@ -1,0 +1,18 @@
+# Heuristic slop filter rules. Each rule is individually disableable:
+# pass null for thresholds, an empty list for denylists, false for flags.
+_target_: mourat.filters.HeuristicSlopFilter
+_partial_: true  # expect positional argument: monitoring_handler
+
+min_text_chars: 200
+deleted_markers:
+  - "[deleted]"
+  - "[removed]"
+  - "[deleted by user]"
+drop_link_only: true
+min_score: null
+author_denylist:
+  - AutoModerator
+author_regex_denylist:
+  - ".*[Bb]ot$"
+title_regex_denylist:
+  - "^(ELI5|Weekly|Daily|Megathread)"

@@ -92,3 +92,10 @@ def test_import_base():
     subprocess.check_call(
         [sys.executable, "-c", "from mourat.base import Function"]
     )
+
+
+def test_import_post_slop_classifier():
+    """PostSlopClassifier should be importable independently."""
+    subprocess.check_call(
+        [sys.executable, "-c", "from mourat.classifiers import PostSlopClassifier"]
+    )

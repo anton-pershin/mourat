@@ -120,15 +120,37 @@ def collect_posts_main(cfg: DictConfig) -> None:
     step_id = "1"
     raw_posts: RedditPostCollection = collector({}, step_id=step_id)
 
-    # Step 2: Enrich
+    # Step 2: Heuristic slop filter
+    heuristic_slop_filter = hydra.utils.instantiate(cfg.slop_filter)(monitoring_handler)
+    step_id = "2"
+    heuristic_posts: RedditPostCollection = heuristic_slop_filter(
+        raw_posts, step_id=step_id
+    )
+
+    # Step 3: Slop classification
+    classification_llm: Model = hydra.utils.instantiate(cfg.classification_llm)
+    slop_classifier = hydra.utils.instantiate(cfg.slop_classifier)(
+        monitoring_handler, model=classification_llm
+    )
+    step_id = "3"
+    classified_posts = slop_classifier(heuristic_posts, step_id=step_id)
+
+    # Step 4: Slop verdict filter
+    slop_verdict_filter = hydra.utils.instantiate(cfg.slop_verdict_filter)(
+        monitoring_handler
+    )
+    step_id = "4"
+    posts: RedditPostCollection = slop_verdict_filter(classified_posts, step_id=step_id)
+
+    # Step 5: Enrich
     enrichment_llm: Model = hydra.utils.instantiate(cfg.enrichment_llm)
     enricher = hydra.utils.instantiate(cfg.enricher)(
         monitoring_handler, model=enrichment_llm
     )
-    step_id = "2"
-    enriched_posts = enricher(raw_posts, step_id=step_id)
+    step_id = "5"
+    enriched_posts = enricher(posts, step_id=step_id)
 
-    # Step 2.5: Load research attributes from database
+    # Step 5.5: Load research attributes from database
     conn = create_connection(db_path)
     try:
         rq_list = rd.list_research_questions(conn)
@@ -165,7 +187,7 @@ def collect_posts_main(cfg: DictConfig) -> None:
     finally:
         conn.close()
 
-    # Step 3: Score
+    # Step 6: Score
     scoring_llm: Model = hydra.utils.instantiate(cfg.scoring_llm)
     scorer: PostScorer = hydra.utils.instantiate(cfg.scorer)(
         monitoring_handler,
@@ -174,17 +196,17 @@ def collect_posts_main(cfg: DictConfig) -> None:
         tc_list=scoring_tc_list,
         topic_list=scoring_topic_list,
     )
-    step_id = "3"
+    step_id = "6"
     scored_posts: ScoredRedditPostCollection = scorer(enriched_posts, step_id=step_id)
 
-    # Step 4: Filter by score
+    # Step 7: Filter by score
     score_filter = hydra.utils.instantiate(cfg.score_filter)(monitoring_handler)
-    step_id = "4"
+    step_id = "7"
     filtered_posts: ScoredRedditPostCollection = score_filter(
         scored_posts, step_id=step_id
     )
 
-    # Step 5: Save
+    # Step 8: Save
     conn = create_connection(db_path)
     try:
         saved = save_posts_to_db(conn, filtered_posts)
@@ -193,6 +215,8 @@ def collect_posts_main(cfg: DictConfig) -> None:
 
     print(
         f"Pipeline complete: {len(raw_posts.posts)} collected, "
+        f"{len(heuristic_posts.posts)} after heuristic filter, "
+        f"{len(posts.posts)} after slop filter, "
         f"{len(enriched_posts.posts)} enriched, "
         f"{len(scored_posts.posts)} scored, "
         f"{saved} saved to database"

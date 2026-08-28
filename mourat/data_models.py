@@ -294,3 +294,36 @@ class ScoredRedditPostCollection(BaseModel):
     """Collection of scored Reddit posts."""
 
     posts: list[ScoredRedditPost]
+
+
+# -- Slop classification pipeline models --
+
+
+class SlopVerdict(BaseModel):
+    """A binary slop verdict for a single post."""
+
+    submission_id: str = Field(description="Reddit submission id the verdict refers to")
+    is_slop: bool = Field(
+        description="True if the post bears no meaningful content and should not be enriched"
+    )
+    justification: str = Field(description="Brief justification for the verdict")
+
+
+class SlopClassificationResult(BaseModel):
+    """LLM slop classification agent output."""
+
+    verdicts: list[SlopVerdict] = Field(description="One verdict per post in the batch")
+
+
+class ClassifiedRedditPost(BaseModel):
+    """A Reddit post with a slop verdict."""
+
+    post: RedditPostInfo
+    is_slop: bool = False
+    justification: str = ""
+
+
+class ClassifiedRedditPostCollection(BaseModel):
+    """Collection of Reddit posts with slop verdicts."""
+
+    posts: list[ClassifiedRedditPost]
