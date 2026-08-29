@@ -93,6 +93,10 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
         self.rq_list = rq_list or []
         self.tc_list = tc_list or []
         self.topic_list = topic_list or []
+        self.valid_id_type_pairs = [
+            (entity["id"], entity["type"])
+            for entity in sum([self.rq_list, self.tc_list, self.topic_list], start=[])
+        ]
         super().__init__(monitoring_handler)
 
     def _run(
@@ -112,7 +116,10 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
             run_result: AgentRunResult = self.agent.run_sync(prompt)
             result: ScoringResult = run_result.output
 
-            relevance_scores = [ScoreEntry.model_validate(e) for e in result.scores]
+            relevance_scores = [
+                ScoreEntry.model_validate(e) for e in result.scores
+                if any((e.id, e.type) == p for p in self.valid_id_type_pairs)
+            ]
             max_score = max(
                 (e.score for e in result.scores),
                 default=0,

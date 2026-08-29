@@ -7,6 +7,7 @@ from mourat.data_models import (
     RedditPostInfo,
     ScoredPaperInfoCollection,
     ScoredRedditPostCollection,
+    ScoreEntry,
 )
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import to_text_description
@@ -66,6 +67,10 @@ class PostScoreFilter(Function[ScoredRedditPostCollection, ScoredRedditPostColle
 
         for p in data.posts:
             if p.max_score >= self.score_threshold:
+                p.relevance_scores: list[ScoreEntry] = [
+                    se for se in p.relevance_scores
+                    if se.score >= self.score_threshold
+                ]
                 output.posts.append(p)
                 text_for_monitoring += (
                     f"### {p.post.title}\n"

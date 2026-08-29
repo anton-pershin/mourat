@@ -56,7 +56,7 @@ def save_posts_to_db(conn, scored: ScoredRedditPostCollection) -> int:
                 influence_score=influence_score,
             )
         except Exception:
-            pass  # Already exists, skip
+            continue  # Already exists, skip
 
         for score_entry in sp.relevance_scores:
             rid = score_entry.id
