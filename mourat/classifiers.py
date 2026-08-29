@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Optional
 
 import pydantic_ai
 from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.exceptions import UnexpectedModelBehavior
-from rich.progress import track
 
 from mourat.base import Function
 from mourat.data_models import (
@@ -20,6 +21,8 @@ from mourat.data_models import (
 )
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import to_text_description
+
+logger = logging.getLogger(__name__)
 
 SLOP_SYSTEM_PROMPT = """\
 You are a content-quality classifier. You are given a batch of social media posts as a
@@ -62,7 +65,9 @@ class BinaryPaperClassifier(Function[PaperInfoCollection, PaperInfoCollection]):
         text_for_monitoring = ""
         output = data
 
-        for p in track(output.papers[:], description="Classify papers"):
+        n_papers = len(output.papers)
+        for i, p in enumerate(output.papers[:], 1):
+            t_item = time.monotonic()
             try:
                 result = self.agent.run_sync(
                     self.user_prompt_template.format(
@@ -72,9 +77,19 @@ class BinaryPaperClassifier(Function[PaperInfoCollection, PaperInfoCollection]):
                     )
                 )
             except UnexpectedModelBehavior:
-                print(f"Failed to validate model answer. Remove paper '{p.title}'")
+                logger.exception(
+                    "Failed to validate model answer. Remove paper '%s'", p.title
+                )
                 output.papers.remove(p)
                 continue
+
+            logger.debug(
+                "classify %d/%d | '%s' | %.2fs",
+                i,
+                n_papers,
+                p.title,
+                time.monotonic() - t_item,
+            )
 
             relevant = result.output
 
@@ -146,7 +161,9 @@ class PostSlopClassifier(
         ]
 
         slop_posts: list[ClassifiedRedditPost] = []
-        for batch in track(batches, description="Classifying slop"):
+        n_batches = len(batches)
+        for b_i, batch in enumerate(batches, 1):
+            t_batch = time.monotonic()
             try:
                 run_result: AgentRunResult = self.agent.run_sync(
                     self._build_batch_prompt(batch)
@@ -154,12 +171,42 @@ class PostSlopClassifier(
                 result: SlopClassificationResult = run_result.output
             except UnexpectedModelBehavior:
                 # Fail open: keep every post of the failed batch.
+                logger.warning(
+                    "Slop classification failed for batch %d/%d (%d posts); "
+                    "keeping all posts of the batch (fail-open)",
+                    b_i,
+                    n_batches,
+                    len(batch),
+                )
                 continue
 
+            logger.debug(
+                "classify slop batch %d/%d | %d posts | %.2fs",
+                b_i,
+                n_batches,
+                len(batch),
+                time.monotonic() - t_batch,
+            )
+
             verdict_by_id = {v.submission_id: v for v in result.verdicts}
+            batch_ids = {cp.post.submission_id for cp in batch}
+            unknown_ids = set(verdict_by_id) - batch_ids
+            if unknown_ids:
+                logger.warning(
+                    "Slop classification returned verdicts for %d unknown "
+                    "submission_id(s); ignoring them: %s",
+                    len(unknown_ids),
+                    sorted(unknown_ids),
+                )
             for cp in batch:
                 verdict = verdict_by_id.get(cp.post.submission_id)
                 if verdict is None:
+                    logger.warning(
+                        "No slop verdict returned for post '%s' (%s); "
+                        "keeping it (fail-open)",
+                        cp.post.title,
+                        cp.post.submission_id,
+                    )
                     continue  # fail open
                 cp.is_slop = verdict.is_slop
                 cp.justification = verdict.justification

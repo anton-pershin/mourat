@@ -11,6 +11,24 @@ handlers:
     class: logging.FileHandler
     formatter: simple
     filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
+loggers:
+  mourat:
+    level: DEBUG
+  httpx:
+    level: WARNING
+  httpcore:
+    level: WARNING
+  openai:
+    level: WARNING
+  praw:
+    level: WARNING
+  prawcore:
+    level: WARNING
+  urllib3:
+    level: WARNING
+  trafilatura:
+    level: WARNING
 root:
+  level: WARNING
   handlers: [file, console]
 disable_existing_loggers: false

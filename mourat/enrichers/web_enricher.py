@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import time
+
 import requests
 from bs4 import BeautifulSoup
 from pydantic_ai import Agent, AgentRunResult
-from pydantic_ai.models import Model
 from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.models import Model
 from pydantic_ai.usage import UsageLimits
 from trafilatura import extract
 
@@ -18,6 +21,8 @@ from mourat.data_models import (
     RedditPostCollection,
 )
 from mourat.monitoring import MonitoringHandler
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
 You are a research assistant helping to enrich social media posts with additional context.
@@ -44,6 +49,8 @@ def _create_enrichment_agent(
     retries: int | None = None,
 ) -> Agent:
     """Create an enrichment agent with URL extraction and web search tools."""
+    tool_time_total = 0.0
+
     agent = Agent(
         model,
         output_type=EnrichmentResult,
@@ -55,6 +62,8 @@ def _create_enrichment_agent(
     @agent.tool_plain
     def extract_url(url: str) -> str:
         """Extract main article content from a URL."""
+        nonlocal tool_time_total
+        t_tool = time.monotonic()
         try:
             resp = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
@@ -66,10 +75,20 @@ def _create_enrichment_agent(
             return f"No extractable content found at {url}"
         except Exception as e:
             return f"Error extracting {url}: {e}"
+        finally:
+            tool_time_total += time.monotonic() - t_tool
+            logger.debug(
+                "extract_url '%s' | %.2fs (tool total %.2fs)",
+                url,
+                time.monotonic() - t_tool,
+                tool_time_total,
+            )
 
     @agent.tool_plain
     def web_search(query: str, max_results: int = 5) -> str:
         """Search the web for information related to a query."""
+        nonlocal tool_time_total
+        t_tool = time.monotonic()
         try:
             resp = requests.post(
                 "https://lite.duckduckgo.com/lite/",
@@ -92,6 +111,16 @@ def _create_enrichment_agent(
             return "\n\n".join(results)
         except Exception as e:
             return f"Error searching for '{query}': {e}"
+        finally:
+            tool_time_total += time.monotonic() - t_tool
+            logger.debug(
+                "web_search '%s' | %.2fs (tool total %.2fs)",
+                query,
+                time.monotonic() - t_tool,
+                tool_time_total,
+            )
+
+    agent._mourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
 
     return agent
 
@@ -120,7 +149,8 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
     ) -> tuple[EnrichedRedditPostCollection, str]:
         enriched_posts = []
         monitoring_lines = []
-        for post_info in data.posts:
+        n_posts = len(data.posts)
+        for i, post_info in enumerate(data.posts, 1):
             prompt = (
                 f"Enrich the following post if it needs more context:\n\n"
                 f"Title: {post_info.title}\n"
@@ -132,14 +162,31 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                 "Return the enriched text and a brief summary of what enrichment was done."
             )
 
+            tools_before = self.agent._mourat_tool_time_total  # type: ignore[attr-defined]
+            t_post = time.monotonic()
             try:
                 run_result: AgentRunResult = self.agent.run_sync(
                     prompt,
                     usage_limits=UsageLimits(request_limit=10, tool_calls_limit=5),
                 )
             except UsageLimitExceeded as e:
-                print(f"Tool or request usage limit exceeded, skip this post: {e}")
+                logger.exception(
+                    "Tool or request usage limit exceeded, skip this post: %s", e
+                )
                 continue
+            post_s = time.monotonic() - t_post
+            tools_s = (
+                self.agent._mourat_tool_time_total - tools_before  # type: ignore[attr-defined]
+            )
+            logger.debug(
+                "enrich %d/%d | '%s' | total=%.2fs tools=%.2fs llm=%.2fs",
+                i,
+                n_posts,
+                post_info.submission_id,
+                post_s,
+                tools_s,
+                post_s - tools_s,
+            )
 
             result: EnrichmentResult = run_result.output
             enriched_posts.append(

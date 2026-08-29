@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 
 from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.models import Model
-from rich.progress import track
 
 from mourat.base import Function
 from mourat.data_models import (
@@ -17,6 +18,8 @@ from mourat.data_models import (
     ScoringResult,
 )
 from mourat.monitoring import MonitoringHandler
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
 You are a research relevance scorer. Given a content item (post) and a list of research questions (RQs),
@@ -105,7 +108,9 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
         scored_posts = []
         monitoring_lines = []
 
-        for ep in track(data.posts, description="Scoring posts"):
+        n_posts = len(data.posts)
+        for i, ep in enumerate(data.posts, 1):
+            t_post = time.monotonic()
             prompt = _build_scoring_prompt(
                 ep.post,
                 ep.enrichment_summary or "",
@@ -115,9 +120,17 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
             )
             run_result: AgentRunResult = self.agent.run_sync(prompt)
             result: ScoringResult = run_result.output
+            logger.debug(
+                "score post %d/%d | '%s' | %.2fs",
+                i,
+                n_posts,
+                ep.post.submission_id,
+                time.monotonic() - t_post,
+            )
 
             relevance_scores = [
-                ScoreEntry.model_validate(e) for e in result.scores
+                ScoreEntry.model_validate(e)
+                for e in result.scores
                 if any((e.id, e.type) == p for p in self.valid_id_type_pairs)
             ]
             max_score = max(

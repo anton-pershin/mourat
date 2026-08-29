@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import time
 from typing import Any, Literal, TypeAlias
 
@@ -8,6 +9,8 @@ import httpx
 from mourat.base import Function
 from mourat.data_models import PaperInfo, PaperInfoCollection
 from mourat.monitoring import MonitoringHandler
+
+logger = logging.getLogger(__name__)
 
 SemanticScholarSearchMode: TypeAlias = Literal[
     "newest", "most_relevant", "most_influential"
@@ -168,9 +171,11 @@ class SemanticScholarPaperCollector(Function[Any, PaperInfoCollection]):
             else:
                 error_code = int(r_data["code"])
                 sleep_s = 5
-                print(
-                    f"Got error code {error_code}: '{r_data['message']}'."
-                    f"Will retry in {sleep_s} seconds"
+                logger.warning(
+                    "Got error code %d: '%s'. Will retry in %d seconds",
+                    error_code,
+                    r_data["message"],
+                    sleep_s,
                 )
                 time.sleep(sleep_s)
 

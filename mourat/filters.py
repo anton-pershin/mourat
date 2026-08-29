@@ -1,4 +1,5 @@
 import re
+import logging
 
 from mourat.base import Function
 from mourat.data_models import (
@@ -11,6 +12,8 @@ from mourat.data_models import (
 )
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import to_text_description
+
+logger = logging.getLogger(__name__)
 
 
 class ScoreBasedPaperFilter(
@@ -68,8 +71,7 @@ class PostScoreFilter(Function[ScoredRedditPostCollection, ScoredRedditPostColle
         for p in data.posts:
             if p.max_score >= self.score_threshold:
                 p.relevance_scores: list[ScoreEntry] = [
-                    se for se in p.relevance_scores
-                    if se.score >= self.score_threshold
+                    se for se in p.relevance_scores if se.score >= self.score_threshold
                 ]
                 output.posts.append(p)
                 text_for_monitoring += (
@@ -174,6 +176,7 @@ class HeuristicSlopFilter(Function[RedditPostCollection, RedditPostCollection]):
             f"Posts in: {total}, kept: {kept_count}, dropped: {dropped_count} "
             f"({pct:.1f}% dropped)"
         ]
+
         for post, rule in dropped:
             lines.append(
                 f"### {post.title}\nURL: {post.url}\nDropped by rule: {rule}\n"
@@ -204,6 +207,7 @@ class SlopFilter(Function[ClassifiedRedditPostCollection, RedditPostCollection])
             f"Posts in: {total}, kept: {len(kept)}, dropped: {dropped_count} "
             f"({pct:.1f}% dropped)"
         ]
+
         for cp in dropped:
             lines.append(
                 f"### {cp.post.title}\nURL: {cp.post.url}\n"

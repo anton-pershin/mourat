@@ -13,7 +13,7 @@ __pycache__/
 run_aider.sh
 
 # hydra
-hydra/
+/hydra/
 
 # datasets
 *.csv

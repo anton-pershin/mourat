@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Optional
 
 import pydantic_ai
@@ -12,6 +13,8 @@ from mourat.data_models import (
     PaperInfoCollection,
 )
 from mourat.monitoring import MonitoringHandler
+
+logger = logging.getLogger(__name__)
 
 
 class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
@@ -52,7 +55,9 @@ class PaperAssigner(Function[PaperInfoCollection, AssignedPaperInfoCollection]):
                         )
                     )
                 except UnexpectedModelBehavior:
-                    print(f"Failed to validate model answer. Remove paper '{p.title}'")
+                    logger.exception(
+                        "Failed to validate model answer. Remove paper '%s'", p.title
+                    )
                     continue
 
             relevant_topic = result.output.strip(" \n\t\r*.#").lower()

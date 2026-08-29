@@ -1,10 +1,10 @@
 """Retrieve content items from the database via CLI."""
 
+import logging
 from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig
-from rich.console import Console
 from rich.table import Table
 
 from mourat.database import create_connection
@@ -16,8 +16,10 @@ from mourat.database.query_engine import (
     search_by_technical_challenge,
 )
 from mourat.utils.common import get_config_path
+from mourat.utils.console import console
 
-console = Console()
+logger = logging.getLogger(__name__)
+
 CONFIG_NAME = "config_retrieve_content"
 
 
@@ -56,7 +58,7 @@ def run_query(conn, cfg):
             max_score=cfg.get("max_influence_score", 100),
         )
     else:
-        console.print(f"[bold red]Unknown query type: {query_type}[/]")
+        logger.error("Unknown query type: %s", query_type)
         return
 
     if not results:
@@ -84,16 +86,19 @@ def run_query(conn, cfg):
 def retrieve_content(cfg: DictConfig) -> None:
     db_path = cfg.get("db_path")
     if db_path is None:
-        console.print("[bold red]Database path not set in config (db_path)[/]")
-        console.print(
+        logger.error(
+            "Database path not set in config (db_path). "
             "Set db_path in config_retrieve_content.yaml or via Hydra override."
         )
         return
 
     db_path = Path(db_path)
     if not db_path.exists():
-        console.print(f"[bold red]Database not found: {db_path}[/]")
-        console.print("Create the database first before running retrieve_content.")
+        logger.error(
+            "Database not found: %s. "
+            "Create the database first before running retrieve_content.",
+            db_path,
+        )
         return
 
     conn = create_connection(db_path)

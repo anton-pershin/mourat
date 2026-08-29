@@ -1,5 +1,6 @@
 """Collect posts from web resources, enrich, score, and save to database."""
 
+import logging
 from pathlib import Path
 
 import hydra
@@ -15,6 +16,8 @@ from mourat.database import research_domain as rd
 from mourat.monitoring import MonitoringHandler
 from mourat.processors.post_scorer import PostScorer
 from mourat.utils.common import get_config_path
+
+logger = logging.getLogger(__name__)
 
 CONFIG_NAME = "config_collect_posts"
 
@@ -213,13 +216,15 @@ def collect_posts_main(cfg: DictConfig) -> None:
     finally:
         conn.close()
 
-    print(
-        f"Pipeline complete: {len(raw_posts.posts)} collected, "
-        f"{len(heuristic_posts.posts)} after heuristic filter, "
-        f"{len(posts.posts)} after slop filter, "
-        f"{len(enriched_posts.posts)} enriched, "
-        f"{len(scored_posts.posts)} scored, "
-        f"{saved} saved to database"
+    logger.info(
+        "Pipeline complete: %d collected, %d after heuristic filter, "
+        "%d after slop filter, %d enriched, %d scored, %d saved to database",
+        len(raw_posts.posts),
+        len(heuristic_posts.posts),
+        len(posts.posts),
+        len(enriched_posts.posts),
+        len(scored_posts.posts),
+        saved,
     )
 
 

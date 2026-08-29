@@ -1,10 +1,11 @@
+import logging
 import math
+import time
 from typing import Optional
 
 import pydantic_ai
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
-from rich.progress import track
 
 from mourat.base import Function
 from mourat.data_models import (
@@ -16,6 +17,8 @@ from mourat.data_models import (
 )
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import to_text_description
+
+logger = logging.getLogger(__name__)
 
 
 class PaperScorer(Function[PaperInfoCollection, ScoredPaperInfoCollection]):
@@ -45,10 +48,11 @@ class PaperScorer(Function[PaperInfoCollection, ScoredPaperInfoCollection]):
         text_for_monitoring = ""
         n_papers_in_group = 10
         n_groups = math.ceil(len(data.papers) // n_papers_in_group) + 1
-        for g_i in track(range(n_groups), description="Score papers"):
+        for g_i in range(n_groups):
             p_i_start = g_i * n_papers_in_group
             p_i_end = min((g_i + 1) * n_papers_in_group, len(data.papers))
             papers = data.papers[p_i_start:p_i_end]
+            t_group = time.monotonic()
 
             try:
                 result = self.agent.run_sync(
@@ -66,11 +70,19 @@ class PaperScorer(Function[PaperInfoCollection, ScoredPaperInfoCollection]):
                     )
                 )
             except UnexpectedModelBehavior:
-                print(
-                    f"Failed to validate model answer. "
-                    f"Skip scoring for {p_i_end - p_i_start} papers"
+                logger.exception(
+                    "Failed to validate model answer. Skip scoring for %d papers",
+                    p_i_end - p_i_start,
                 )
                 continue
+
+            logger.debug(
+                "score group %d/%d | %d papers | %.2fs",
+                g_i + 1,
+                n_groups,
+                len(papers),
+                time.monotonic() - t_group,
+            )
 
             for paper_score_info in result.output:
                 # TODO: this is an awful prompt design for checking the paper id
@@ -78,9 +90,9 @@ class PaperScorer(Function[PaperInfoCollection, ScoredPaperInfoCollection]):
                     data.papers, paper_score_info.title
                 )
                 if p is None:
-                    print(
-                        f"Paper with title '{paper_score_info.title}' "
-                        "not found in output. Have to skip it"
+                    logger.warning(
+                        "Paper with title '%s' not found in output. Have to skip it",
+                        paper_score_info.title,
                     )
                     continue
 
