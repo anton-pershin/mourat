@@ -59,9 +59,21 @@ score_filter:
 
 # Component configs
 enrichment:
-  system_prompt: >
+  system_prompt: |
     You are a research assistant helping to enrich social media posts with additional context.
-    For each post, determine if enrichment is needed. Use extract_url or web_search tools as needed.
+
+    For each post provided, your task is to:
+    1. Determine if the post needs enrichment (e.g., post mentioning a topic that needs more context).
+    2. If enrichment is needed, use the available tools to gather relevant information:
+       - `extract_url`: Fetch and extract the full content of a linked article.
+       - `web_search`: Find related information online.
+    3. After enrichment, return the enriched text and a brief summary of what you did.
+
+    If the post already has sufficient text, you may leave it unchanged and provide a short summary.
+    Be concise and focused. Only enrich posts that genuinely need it.
+
+    Note that you have strict tool usage limits: one `web_search` call and three `extract_url` calls.
+    Be frugal and smart in your choices and do not attempt to bypass these limits.
   agent:
     timeout: 300
     retries: 3

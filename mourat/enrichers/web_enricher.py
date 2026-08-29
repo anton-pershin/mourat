@@ -6,6 +6,8 @@ import requests
 from bs4 import BeautifulSoup
 from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.models import Model
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.usage import UsageLimits
 from trafilatura import extract
 
 from mourat.base import Function
@@ -29,6 +31,9 @@ For each post provided, your task is to:
 
 If the post already has sufficient text, you may leave it unchanged and provide a short summary.
 Be concise and focused. Only enrich posts that genuinely need it.
+
+Note that you have **strict tool usage limits**: one `web_search` call and three `extract_url` calls.
+Be frugal and smart in your choices and do not attempt to bypass these limits.
 """
 
 
@@ -127,7 +132,15 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                 "Return the enriched text and a brief summary of what enrichment was done."
             )
 
-            run_result: AgentRunResult = self.agent.run_sync(prompt)
+            try:
+                run_result: AgentRunResult = self.agent.run_sync(
+                    prompt,
+                    usage_limits=UsageLimits(request_limit=10, tool_calls_limit=5),
+                )
+            except UsageLimitExceeded as e:
+                print(f"Tool or request usage limit exceeded, skip this post: {e}")
+                continue
+
             result: EnrichmentResult = run_result.output
             enriched_posts.append(
                 EnrichedRedditPost(
