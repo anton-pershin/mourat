@@ -2,5 +2,10 @@ hydra-core >= 1.3
 praw >= 7.7.0
 rich >= 14.0.0
 feedparser
+httpx
+requests
+beautifulsoup4
+trafilatura
 
+pydantic
 pydantic-ai

@@ -25,17 +25,18 @@ from mourat.monitoring import MonitoringHandler
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-You are a research assistant helping to enrich social media posts with additional context.
+You are a research assistant gathering additional context for social media posts.
 
 For each post provided, your task is to:
-1. Determine if the post needs enrichment (e.g., link-only post with no body text, post mentioning a topic that needs more context).
-2. If enrichment is needed, use the available tools to gather relevant information:
+1. Use the available tools to gather relevant information:
    - `extract_url`: Fetch and extract the full content of a linked article.
    - `web_search`: Find related information online.
-3. After enrichment, return the enriched text and a brief summary of what you did.
+2. Return a list of additional context points: short self-contained facts
+   obtained from the web that are NOT already evident in the post.
+   Each point must stand alone, phrased like "X is ...".
+3. If the web search and article fetch yield nothing new, return an empty list.
 
-If the post already has sufficient text, you may leave it unchanged and provide a short summary.
-Be concise and focused. Only enrich posts that genuinely need it.
+Return at most 5 context points.
 
 Note that you have **strict tool usage limits**: one `web_search` call and three `extract_url` calls.
 Be frugal and smart in your choices and do not attempt to bypass these limits.
@@ -152,14 +153,14 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         n_posts = len(data.posts)
         for i, post_info in enumerate(data.posts, 1):
             prompt = (
-                f"Enrich the following post if it needs more context:\n\n"
+                f"Gather additional context for the following post:\n\n"
                 f"Title: {post_info.title}\n"
                 f"Author: {post_info.author}\n"
                 f"URL: {post_info.url}\n"
                 f"Score: {post_info.score}\n"
                 f"Text: {post_info.text or '(no text)'}\n\n"
                 "Use extract_url to fetch the linked article, or web_search to find related info. "
-                "Return the enriched text and a brief summary of what enrichment was done."
+                "Return the list of additional context points (facts not already evident in the post)."
             )
 
             tools_before = self.agent._mourat_tool_time_total  # type: ignore[attr-defined]
@@ -191,15 +192,18 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
             result: EnrichmentResult = run_result.output
             enriched_posts.append(
                 EnrichedRedditPost(
-                    post=post_info, enrichment_summary=result.enrichment_summary
+                    post=post_info,
+                    additional_context=result.additional_context,
                 )
+            )
+            context_lines = "\n".join(
+                f"{i}. {point}" for i, point in enumerate(result.additional_context, 1)
             )
             monitoring_lines.append(
                 f"### {post_info.title}\n"
                 f"URL: {post_info.url}\n"
                 f"Original text: {post_info.text or '(none)'}\n"
-                f"Enriched text: {result.enriched_text}\n"
-                f"Enrichment: {result.enrichment_summary}\n"
+                f"Additional context:\n{context_lines}\n"
             )
 
         output = EnrichedRedditPostCollection(posts=enriched_posts)

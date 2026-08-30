@@ -24,7 +24,6 @@ Each content item must be relevant to at least one of the research questions or 
 2. Collect the most influential papers for a specific research question, technical challenge or a more narrow topic.
 3. Collect the newest posts from one of the specified web resources and find details if they are missing in the posts.
 4. Have the content item database where the content items found by the collection tools can be saved by request. It should support retrieval by keywords, relevant research questions, relevant technical challenges and relevant research topics.
-5. Provide tools to keep the paper/post database up to date in the sense of their relation to the research questions, technical challenges or more narrow topics.
 
 #### 2.2 Non-functional requirements
 
@@ -38,7 +37,7 @@ Each content item must be relevant to at least one of the research questions or 
 - **FR1 (collect newest arXiv papers, prune by relevance):** e2e test running the collection pipeline on a small batch of known papers, verifying that irrelevant papers are filtered out and relevant ones are retained with correct relevance scores.
 - **FR2 (collect influential papers for a topic/RQ/TC):** e2e test querying a known topic, verifying that returned papers match expected influential works.
 - **FR3 (collect newest posts from web resources, enrich missing details):** e2e test against a known set of posts, verifying that enrichment fills in missing details correctly.
-- **FR4 (content item database with retrieval):** tests for CRUD operations and retrieval by keywords, research questions, technical challenges, and research topics. FR5 (incremental database updates) is covered by these same tests.
+- **FR4 (content item database with retrieval):** tests for CRUD operations and retrieval by keywords, research questions, technical challenges, and research topics.
 - **NFR1 (collection performance <1h for 2000 items):** benchmark test measuring end-to-end processing time on a 2000-item batch.
 - **NFR2 (retrieval performance <1min for 5000 items):** benchmark test measuring search time over a 5000-item database.
 - **NFR3 (file-based, human-readable):** validated manually.
@@ -117,8 +116,11 @@ flowchart LR
 
 1. **[DONE] Refactor existing scripts into modular components** — decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure.
 2. **[DONE] Build content database layer** — implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, and topics.
-3. **Build collect_posts with enricher** - implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web.
-4. **Implement tool registry** — create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration.
-5. **Add e2e tests** — write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates.
-6. **Add benchmark tests** — implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min).
-7. **Validate CLI usability** — ensure all scripts are clean, documented, and usable directly from the command line by a human.
+3. **[DONE] Build collect_posts with enricher** — implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web.
+4. **Refactor collect_newest_papers** — add deep paper analysis, logging and database interaction
+5. **Refactor collect_recent_influential_papers** — add deep paper analysis, logging and database interaction
+6. **Add e2e tests** — write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates.
+7. **Add concurrent processing** — implement concurrency where it is possible (concurrent requests to an LLM, concurrent data collection requests etc.)
+8. **Add benchmark tests** — implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min).
+9. **Implement tool registry** — create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration.
+10. **Validate CLI usability** — ensure all scripts are clean, documented, and usable directly from the command line by a human.

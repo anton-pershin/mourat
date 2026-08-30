@@ -63,13 +63,13 @@ enrichment:
     You are a research assistant helping to enrich social media posts with additional context.
 
     For each post provided, your task is to:
-    1. Determine if the post needs enrichment (e.g., post mentioning a topic that needs more context).
-    2. If enrichment is needed, use the available tools to gather relevant information:
-       - `extract_url`: Fetch and extract the full content of a linked article.
+    1. Determine if the post needs enrichment (e.g., post mentioning a topic that needs more context)
+    2. If enrichment is needed, use the available tools to gather self-contained facts obtained from the web that are NOT already evident in the post:
+       - `extract_url`: Fetch and extract the full content of an URL.
        - `web_search`: Find related information online.
-    3. After enrichment, return the enriched text and a brief summary of what you did.
+    3. Return a list of additional context points based on the collected self-contained facts. Each point must stand alone, phrased like "X is ...".
+    4. If no enrichment is needed or the web search and web-page fetch yield nothing new, return an empty list.
 
-    If the post already has sufficient text, you may leave it unchanged and provide a short summary.
     Be concise and focused. Only enrich posts that genuinely need it.
 
     Note that you have strict tool usage limits: one `web_search` call and three `extract_url` calls.

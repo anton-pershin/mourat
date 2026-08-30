@@ -36,13 +36,17 @@ Return only scores for items that are actually relevant to the post (score > 0).
 
 def _build_scoring_prompt(
     post_info,
-    enriched_text: str = "",
+    additional_context: list[str] | None = None,
     rq_list: list[dict] | None = None,
     tc_list: list[dict] | None = None,
     topic_list: list[dict] | None = None,
 ) -> str:
-    """Build the scoring prompt for a single post."""
-    text = enriched_text or post_info.text or "(no text)"
+    """Build the scoring prompt for a single post.
+
+    Composes the original post text followed by the numbered additional
+    context points (when any are present).
+    """
+    text = post_info.text or "(no text)"
 
     lines = [
         "Score the following post against the research attributes below.",
@@ -51,8 +55,14 @@ def _build_scoring_prompt(
         f"Author: {post_info.author}",
         f"URL: {post_info.url}",
         f"Content: {text}",
-        "",
     ]
+
+    if additional_context:
+        lines.append("")
+        lines.append("Additional context:")
+        for i, point in enumerate(additional_context, 1):
+            lines.append(f"{i}. {point}")
+        lines.append("")
 
     if rq_list:
         lines.append(f"Research Questions: {json.dumps(rq_list)}")
@@ -113,7 +123,7 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
             t_post = time.monotonic()
             prompt = _build_scoring_prompt(
                 ep.post,
-                ep.enrichment_summary or "",
+                ep.additional_context,
                 self.rq_list,
                 self.tc_list,
                 self.topic_list,
@@ -134,7 +144,7 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
                 if any((e.id, e.type) == p for p in self.valid_id_type_pairs)
             ]
             max_score = max(
-                (e.score for e in result.scores),
+                (e.score for e in relevance_scores),
                 default=0,
             )
 
@@ -151,7 +161,7 @@ class PostScorer(Function[EnrichedRedditPostCollection, ScoredRedditPostCollecti
             scored_posts.append(
                 ScoredRedditPost(
                     post=ep.post,
-                    enrichment_summary=ep.enrichment_summary or "",
+                    additional_context=ep.additional_context,
                     relevance_scores=relevance_scores,
                     max_score=float(max_score),
                 )

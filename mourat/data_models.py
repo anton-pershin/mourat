@@ -236,11 +236,13 @@ class RedditPostCollection(BaseModel):
 
 
 class EnrichmentResult(BaseModel):
-    """LLM enrichment agent output."""
+    """LLM enrichment agent output: additional context points."""
 
-    enriched_text: str = Field(description="The enriched text content of the post")
-    enrichment_summary: str = Field(
-        description="Brief description of what enrichment was performed"
+    additional_context: list[str] = Field(
+        description=(
+            "Short self-contained context points with facts obtained from the web "
+            "that are not already evident in the post"
+        )
     )
 
 
@@ -269,10 +271,10 @@ class ScoringResult(BaseModel):
 
 
 class EnrichedRedditPost(BaseModel):
-    """A Reddit post with enrichment metadata."""
+    """A Reddit post with additional context points gathered from the web."""
 
     post: RedditPostInfo
-    enrichment_summary: str = ""
+    additional_context: list[str] = []
 
 
 class EnrichedRedditPostCollection(BaseModel):
@@ -285,7 +287,7 @@ class ScoredRedditPost(BaseModel):
     """A Reddit post with relevance scores."""
 
     post: RedditPostInfo
-    enrichment_summary: str = ""
+    additional_context: list[str] = []
     relevance_scores: list[ScoreEntry] = []
     max_score: float = 0.0
 
