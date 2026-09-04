@@ -18,12 +18,12 @@ In the requirements above, we always assume the research questions and the techn
 
 We also assume that we have a table of research topics specified by a user where each topic is associated with one or more research questions or technical challenges.
 
-Each content item must be relevant to at least one of the research questions or technical challenges and at least one research topic. For each related research question, technical challenge and research topic, each content item should have filled relevance attributes and a relevance score. Each content item should also have influence score (either estimated if we talk about a fresh content item or factual).
+Each content item must be relevant to at least one of the research questions OR at least one of the technical challenges OR at least one research topic. For each related research question, technical challenge, constraint and research topic, each content item should have filled relevance attributes and a relevance score. Each content item should also have influence score (either estimated if we talk about a fresh content item or factual).
 
 1. Collect the newest papers from arXiv and prune by relevance.
-2. Collect the most influential papers for a specific research question, technical challenge or a more narrow topic.
+2. Collect the most influential papers for a specific research question, technical challenge or a more narrow topic aligned with the given constraints.
 3. Collect the newest posts from one of the specified web resources and find details if they are missing in the posts.
-4. Have the content item database where the content items found by the collection tools can be saved by request. It should support retrieval by keywords, relevant research questions, relevant technical challenges and relevant research topics.
+4. Have the content item database where the content items found by the collection tools can be saved by request. It should support retrieval by keywords, relevant research questions, relevant technical challenges, relevant constraints and relevant research topics.
 
 #### 2.2 Non-functional requirements
 
@@ -37,7 +37,7 @@ Each content item must be relevant to at least one of the research questions or 
 - **FR1 (collect newest arXiv papers, prune by relevance):** e2e test running the collection pipeline on a small batch of known papers, verifying that irrelevant papers are filtered out and relevant ones are retained with correct relevance scores.
 - **FR2 (collect influential papers for a topic/RQ/TC):** e2e test querying a known topic, verifying that returned papers match expected influential works.
 - **FR3 (collect newest posts from web resources, enrich missing details):** e2e test against a known set of posts, verifying that enrichment fills in missing details correctly.
-- **FR4 (content item database with retrieval):** tests for CRUD operations and retrieval by keywords, research questions, technical challenges, and research topics.
+- **FR4 (content item database with retrieval):** tests for CRUD operations and retrieval by keywords, research questions, technical challenges, constraints and research topics.
 - **NFR1 (collection performance <1h for 2000 items):** benchmark test measuring end-to-end processing time on a 2000-item batch.
 - **NFR2 (retrieval performance <1min for 5000 items):** benchmark test measuring search time over a 5000-item database.
 - **NFR3 (file-based, human-readable):** validated manually.
@@ -115,7 +115,7 @@ flowchart LR
 #### 6.1 Todo list
 
 1. **[DONE] Refactor existing scripts into modular components** — decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure.
-2. **[DONE] Build content database layer** — implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, and topics.
+2. **[DONE] Build content database layer** — implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, constraints and topics.
 3. **[DONE] Build collect_posts with enricher** — implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web.
 4. **Refactor collect_newest_papers** — add deep paper analysis, logging and database interaction
 5. **Refactor collect_recent_influential_papers** — add deep paper analysis, logging and database interaction
