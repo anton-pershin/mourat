@@ -3,9 +3,9 @@ _partial_: true  # expect positional argument: monitoring_handler
 
 # Subreddits to collect posts from
 subreddits:
-  - "ChatGPT"
-  - "singularity"
+  - "Anthropic"
   - "OpenAI"
+  - "singularity"
   - "accelerate"
   - "LocalLLaMA"
   - "MachineLearning"
@@ -17,7 +17,7 @@ time_window:
 
 # Reddit API settings
 limit_per_subreddit: 100
-max_posts_per_subreddit: 10
+max_posts_per_subreddit: 50
 
 # Filter: skip posts with no text (default: true)
 # Set to false to also collect link-only posts

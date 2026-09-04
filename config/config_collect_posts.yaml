@@ -23,6 +23,8 @@ enricher:
   model_settings:
     timeout: ${enrichment.agent.timeout}
   retries: ${enrichment.agent.retries}
+  request_limit: 20
+  tool_calls_limit: 10
 
 # Scorer
 scorer:

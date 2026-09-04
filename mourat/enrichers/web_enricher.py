@@ -136,6 +136,8 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         system_prompt: str = SYSTEM_PROMPT,
         model_settings: dict | None = None,
         retries: int | None = None,
+        request_limit: int = 20,
+        tool_calls_limit: int = 10,
     ) -> None:
         self.agent = _create_enrichment_agent(
             model,
@@ -143,6 +145,8 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
             model_settings=model_settings,
             retries=retries,
         )
+        self.request_limit = request_limit
+        self.tool_calls_limit = tool_calls_limit
         super().__init__(monitoring_handler)
 
     def _run(
@@ -168,7 +172,10 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
             try:
                 run_result: AgentRunResult = self.agent.run_sync(
                     prompt,
-                    usage_limits=UsageLimits(request_limit=10, tool_calls_limit=5),
+                    usage_limits=UsageLimits(
+                        request_limit=self.request_limit,
+                        tool_calls_limit=self.tool_calls_limit
+                    ),
                 )
             except UsageLimitExceeded as e:
                 logger.exception(
