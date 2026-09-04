@@ -10,7 +10,8 @@ from bs4 import BeautifulSoup
 from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.models import Model
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai.usage import RunUsage, UsageLimits
+from pydantic_ai.tools import RunContext
 from trafilatura import extract
 
 from mourat.base import Function
@@ -48,6 +49,7 @@ def _create_enrichment_agent(
     system_prompt: str = SYSTEM_PROMPT,
     model_settings: dict | None = None,
     retries: int | None = None,
+    tool_call_rejection_buffer: int = 4,
 ) -> Agent:
     """Create an enrichment agent with URL extraction and web search tools."""
     tool_time_total = 0.0
@@ -58,11 +60,32 @@ def _create_enrichment_agent(
         system_prompt=system_prompt,
         model_settings=model_settings,
         retries=retries,
+        deps_type=dict,
     )
 
-    @agent.tool_plain
-    def extract_url(url: str) -> str:
+    def _ensure_tool_call_within_buffer(ctx: RunContext[dict]) -> str | None:
+        usage: RunUsage = ctx.usage
+        usage_limits: UsageLimits = ctx.usage_limits
+        if usage.tool_calls + tool_call_rejection_buffer > usage_limits.tool_calls_limit:
+            logger.debug(
+                "attempted to exceed tool call limit",
+            )
+            return (
+                "Tool call limit is exceeded. "
+                "Do not call tools anymore. "
+                "Answer the request based on the available information"
+            )
+        else:
+            return None
+
+
+    @agent.tool
+    def extract_url(ctx: RunContext[dict], url: str) -> str:
         """Extract main article content from a URL."""
+
+        if error_msg := _ensure_tool_call_within_buffer(ctx):
+            return error_msg
+
         nonlocal tool_time_total
         t_tool = time.monotonic()
         try:
@@ -85,9 +108,13 @@ def _create_enrichment_agent(
                 tool_time_total,
             )
 
-    @agent.tool_plain
-    def web_search(query: str, max_results: int = 5) -> str:
+    @agent.tool
+    def web_search(ctx: RunContext[dict], query: str, max_results: int = 5) -> str:
         """Search the web for information related to a query."""
+
+        if error_msg := _ensure_tool_call_within_buffer(ctx):
+            return error_msg
+
         nonlocal tool_time_total
         t_tool = time.monotonic()
         try:
@@ -138,12 +165,14 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         retries: int | None = None,
         request_limit: int = 20,
         tool_calls_limit: int = 10,
+        tool_call_rejection_buffer: int = 4,
     ) -> None:
         self.agent = _create_enrichment_agent(
             model,
             system_prompt=system_prompt,
             model_settings=model_settings,
             retries=retries,
+            tool_call_rejection_buffer=tool_call_rejection_buffer,
         )
         self.request_limit = request_limit
         self.tool_calls_limit = tool_calls_limit

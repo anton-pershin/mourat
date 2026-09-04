@@ -25,6 +25,7 @@ enricher:
   retries: ${enrichment.agent.retries}
   request_limit: 20
   tool_calls_limit: 10
+  tool_call_rejection_buffer: 4
 
 # Scorer
 scorer:
