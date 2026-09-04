@@ -302,3 +302,43 @@ def list_item_research_topics(conn: sqlite3.Connection, content_id: str) -> list
         (content_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# -- Content item ↔ constraints --
+
+
+def add_item_constraint(
+    conn: sqlite3.Connection,
+    content_id: str,
+    constraint_id: str,
+    justification: str = "",
+    relevance_score: int | None = None,
+) -> None:
+    conn.execute(
+        "INSERT INTO item_constraints "
+        "(content_id, constraint_id, justification, relevance_score) "
+        "VALUES (?, ?, ?, ?)",
+        (content_id, constraint_id, justification, relevance_score),
+    )
+    conn.commit()
+
+
+def remove_item_constraint(
+    conn: sqlite3.Connection, content_id: str, constraint_id: str
+) -> None:
+    conn.execute(
+        "DELETE FROM item_constraints WHERE content_id = ? AND constraint_id = ?",
+        (content_id, constraint_id),
+    )
+    conn.commit()
+
+
+def list_item_constraints(conn: sqlite3.Connection, content_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT c.*, ic.justification, ic.relevance_score "
+        "FROM constraints c "
+        "JOIN item_constraints ic ON c.id = ic.constraint_id "
+        "WHERE ic.content_id = ? ORDER BY c.id",
+        (content_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]

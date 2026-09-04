@@ -246,7 +246,8 @@ def _make_sample_post(**overrides):
 
 
 def _make_scorer(
-    captured_prompts: list[str], captured_monitoring: list[str], scripted_scores: list
+    captured_prompts: list[str], captured_monitoring: list[str], scripted_scores: list,
+    constraint_list: list | None = None,
 ):
     """Create a PostScorer with a FunctionModel returning scripted scoring results.
 
@@ -271,6 +272,7 @@ def _make_scorer(
         monitoring_handler=CapturingHandler(),
         model=FunctionModel(model_fn),
         rq_list=[{"id": "rq1", "name": "RQ one", "type": "rq", "description": "d"}],
+        constraint_list=constraint_list or [],
     )
 
 
@@ -386,3 +388,118 @@ class TestPostScorerAdditionalContextAndMaxScore:
         assert sp.relevance_scores == []
         assert sp.max_score == 0.0
         assert len(output.posts) == 1  # post retained, not dropped
+
+    def test_constraint_scores_returned(self):
+        from mourat.data_models import (
+            EnrichedRedditPost,
+            EnrichedRedditPostCollection,
+        )
+
+        captured_prompts: list[str] = []
+        captured_monitoring: list[str] = []
+        scorer = _make_scorer(
+            captured_prompts,
+            captured_monitoring,
+            [[
+                {"id": "c1", "type": "constraint", "score": 70, "justification": "aligned"},
+            ]],
+            constraint_list=[
+                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+            ],
+        )
+
+        ep = EnrichedRedditPost(post=_make_sample_post(), additional_context=[])
+        output = scorer(EnrichedRedditPostCollection(posts=[ep]), step_id="1")
+
+        sp = output.posts[0]
+        assert len(sp.relevance_scores) == 1
+        assert sp.relevance_scores[0].type == "constraint"
+        assert sp.relevance_scores[0].score == 70
+        # Constraint scores do not count toward max_score
+        assert sp.max_score == 0.0
+        assert "Memory limit" in captured_prompts[0]
+
+    def test_max_score_excludes_constraints(self):
+        from mourat.data_models import (
+            EnrichedRedditPost,
+            EnrichedRedditPostCollection,
+        )
+
+        captured_prompts: list[str] = []
+        captured_monitoring: list[str] = []
+        scorer = _make_scorer(
+            captured_prompts,
+            captured_monitoring,
+            [[
+                {"id": "rq1", "type": "rq", "score": 90, "justification": "relevant"},
+                {"id": "c1", "type": "constraint", "score": 20, "justification": "fails"},
+            ]],
+            constraint_list=[
+                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+            ],
+        )
+
+        ep = EnrichedRedditPost(post=_make_sample_post(), additional_context=[])
+        output = scorer(EnrichedRedditPostCollection(posts=[ep]), step_id="1")
+
+        sp = output.posts[0]
+        assert sp.max_score == 90.0
+        assert {e.type for e in sp.relevance_scores} == {"rq", "constraint"}
+
+    def test_max_score_constraint_only(self):
+        from mourat.data_models import (
+            EnrichedRedditPost,
+            EnrichedRedditPostCollection,
+        )
+
+        captured_prompts: list[str] = []
+        captured_monitoring: list[str] = []
+        scorer = _make_scorer(
+            captured_prompts,
+            captured_monitoring,
+            [[
+                {"id": "c1", "type": "constraint", "score": 85, "justification": "high"},
+            ]],
+            constraint_list=[
+                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+            ],
+        )
+
+        ep = EnrichedRedditPost(post=_make_sample_post(), additional_context=[])
+        output = scorer(EnrichedRedditPostCollection(posts=[ep]), step_id="1")
+
+        sp = output.posts[0]
+        assert sp.max_score == 0.0
+        assert len(sp.relevance_scores) == 1
+        assert sp.relevance_scores[0].type == "constraint"
+
+    def test_invalid_constraint_ids_filtered(self):
+        from mourat.data_models import (
+            EnrichedRedditPost,
+            EnrichedRedditPostCollection,
+        )
+
+        captured_prompts: list[str] = []
+        captured_monitoring: list[str] = []
+        scorer = _make_scorer(
+            captured_prompts,
+            captured_monitoring,
+            [[
+                {
+                    "id": "hallucinated",
+                    "type": "constraint",
+                    "score": 95,
+                    "justification": "phantom",
+                },
+            ]],
+            constraint_list=[
+                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+            ],
+        )
+
+        ep = EnrichedRedditPost(post=_make_sample_post(), additional_context=[])
+        output = scorer(EnrichedRedditPostCollection(posts=[ep]), step_id="1")
+
+        sp = output.posts[0]
+        assert sp.relevance_scores == []
+        assert sp.max_score == 0.0

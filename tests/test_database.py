@@ -1,11 +1,12 @@
 """Tests for database CRUD operations and query engine."""
 
 import os
+import sqlite3
 import tempfile
 
 import pytest
 
-from mourat.database import init_db
+from mourat.database import apply_schema, init_db
 from mourat.database import business_domain as bd
 from mourat.database import research_domain as rd
 from mourat.database import content_item as ci
@@ -188,3 +189,81 @@ class TestQueryEngine:
         results = qe.search_by_keywords(conn, "alpha AND beta")
         assert len(results) == 1
         assert results[0]["id"] == "item1"
+
+
+# -- Item ↔ constraints --
+
+class TestItemConstraints:
+    def test_add_list_remove_item_constraint(self, conn):
+        ci.create_source_type(conn, "paper", "Paper")
+        ci.create_platform(conn, "arxiv", "Arxiv")
+        ci.create_influence_metric(conn, "citations", "Citations")
+        ci.create_content_item(
+            conn, "item1", "Test Paper",
+            source_type_id="paper", platform_id="arxiv",
+            influence_metric_id="citations",
+        )
+        bd.create_constraint(conn, "c1", "Memory limit")
+        ci.add_item_constraint(conn, "item1", "c1", "Violates", 20)
+        links = ci.list_item_constraints(conn, "item1")
+        assert len(links) == 1
+        assert links[0]["id"] == "c1"
+        assert links[0]["relevance_score"] == 20
+        assert links[0]["justification"] == "Violates"
+        ci.remove_item_constraint(conn, "item1", "c1")
+        assert ci.list_item_constraints(conn, "item1") == []
+
+    def test_add_item_constraint_duplicate(self, conn):
+        ci.create_source_type(conn, "paper", "Paper")
+        ci.create_platform(conn, "arxiv", "Arxiv")
+        ci.create_influence_metric(conn, "citations", "Citations")
+        ci.create_content_item(
+            conn, "item1", "Test Paper",
+            source_type_id="paper", platform_id="arxiv",
+            influence_metric_id="citations",
+        )
+        bd.create_constraint(conn, "c1", "Memory limit")
+        ci.add_item_constraint(conn, "item1", "c1", "j", 20)
+        with pytest.raises(sqlite3.IntegrityError):
+            ci.add_item_constraint(conn, "item1", "c1", "j2", 30)
+
+    def test_apply_schema_creates_item_constraints_on_old_db(self, conn):
+        """apply_schema on a DB missing item_constraints creates the table."""
+        ci.create_source_type(conn, "paper", "Paper")
+        ci.create_platform(conn, "arxiv", "Arxiv")
+        ci.create_influence_metric(conn, "citations", "Citations")
+        ci.create_content_item(
+            conn, "item1", "Test Paper",
+            source_type_id="paper", platform_id="arxiv",
+            influence_metric_id="citations",
+        )
+        conn.execute("DROP TABLE item_constraints")
+        conn.commit()
+        apply_schema(conn)
+        cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(item_constraints)")
+        }
+        assert cols == {"content_id", "constraint_id", "justification", "relevance_score"}
+        # Existing data intact
+        assert conn.execute(
+            "SELECT COUNT(*) FROM content_items"
+        ).fetchone()[0] == 1
+
+    def test_search_by_constraint(self, conn):
+        ci.create_source_type(conn, "paper", "Paper")
+        ci.create_platform(conn, "arxiv", "Arxiv")
+        ci.create_influence_metric(conn, "citations", "Citations")
+        ci.create_content_item(
+            conn, "item1", "Test Paper",
+            source_type_id="paper", platform_id="arxiv",
+            influence_metric_id="citations",
+        )
+        bd.create_constraint(conn, "c1", "Memory limit")
+        ci.add_item_constraint(conn, "item1", "c1", "match", 40)
+        results = qe.search_by_constraint(conn, "c1", min_score=30)
+        assert len(results) == 1
+        assert results[0]["id"] == "item1"
+        assert results[0]["relevance_score"] == 40
+        # Below threshold: excluded
+        assert qe.search_by_constraint(conn, "c1", min_score=50) == []
+

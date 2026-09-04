@@ -89,6 +89,13 @@ def save_posts_to_db(conn, scored: ScoredRedditPostCollection) -> int:
                         )
                     except Exception:
                         pass
+                elif rtype == "constraint":
+                    try:
+                        ci.add_item_constraint(
+                            conn, item_id, rid, justification, int(score_val)
+                        )
+                    except Exception:
+                        pass
 
         saved += 1
 
@@ -159,6 +166,7 @@ def collect_posts_main(cfg: DictConfig) -> None:
         rq_list = rd.list_research_questions(conn)
         tc_list = bd.list_technical_challenges(conn)
         topic_list = rd.list_research_topics(conn)
+        constraint_list = bd.list_constraints(conn)
         # Format for the scorer: each entry needs id, name, description
         scoring_rq_list = [
             {
@@ -187,6 +195,15 @@ def collect_posts_main(cfg: DictConfig) -> None:
             }
             for t in topic_list
         ]
+        scoring_constraint_list = [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "type": "constraint",
+                "description": c["description"],
+            }
+            for c in constraint_list
+        ]
     finally:
         conn.close()
 
@@ -198,6 +215,7 @@ def collect_posts_main(cfg: DictConfig) -> None:
         rq_list=scoring_rq_list,
         tc_list=scoring_tc_list,
         topic_list=scoring_topic_list,
+        constraint_list=scoring_constraint_list,
     )
     step_id = "6"
     scored_posts: ScoredRedditPostCollection = scorer(enriched_posts, step_id=step_id)

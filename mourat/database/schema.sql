@@ -180,6 +180,16 @@ CREATE TABLE IF NOT EXISTS item_research_topics (
     FOREIGN KEY (topic_id) REFERENCES research_topics(id)
 );
 
+CREATE TABLE IF NOT EXISTS item_constraints (
+    content_id TEXT NOT NULL,
+    constraint_id TEXT NOT NULL,
+    justification TEXT,
+    relevance_score INTEGER CHECK (relevance_score BETWEEN 0 AND 100),
+    PRIMARY KEY (content_id, constraint_id),
+    FOREIGN KEY (content_id) REFERENCES content_items(id),
+    FOREIGN KEY (constraint_id) REFERENCES constraints(id)
+);
+
 -- FTS5 virtual table for full-text search
 CREATE VIRTUAL TABLE IF NOT EXISTS content_items_fts USING fts5(
     name,

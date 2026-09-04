@@ -250,10 +250,12 @@ class ScoreEntry(BaseModel):
     """A single relevance score entry."""
 
     id: str = Field(
-        description="ID of the research question, technical challenge, or topic"
+        description=(
+            "ID of the research question, technical challenge, constraint, or topic"
+        )
     )
-    type: Literal["rq", "tc", "topic"] = Field(
-        description="Type: 'rq', 'tc', or 'topic'"
+    type: Literal["rq", "tc", "topic", "constraint"] = Field(
+        description="Type: 'rq', 'tc', 'topic', or 'constraint'"
     )
     score: int = Field(description="Relevance score from 0 to 100", ge=0, le=100)
     justification: str = Field(description="Justification for the score")

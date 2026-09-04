@@ -92,6 +92,27 @@ def search_by_research_topic(
     return [dict(r) for r in rows]
 
 
+def search_by_constraint(
+    conn: sqlite3.Connection, constraint_id: str, min_score: int | None = None
+) -> list[dict]:
+    """Retrieve content items linked to a constraint."""
+    sql = """
+        SELECT ci.*, ic.relevance_score
+        FROM content_items ci
+        JOIN item_constraints ic ON ci.id = ic.content_id
+        WHERE ic.constraint_id = ?
+    """
+    params: list = [constraint_id]
+
+    if min_score is not None:
+        sql += " AND ic.relevance_score >= ?"
+        params.append(min_score)
+
+    sql += " ORDER BY ic.relevance_score DESC"
+    rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
 def search_by_influence_score(
     conn: sqlite3.Connection, min_score: int, max_score: int = 100
 ) -> list[dict]:
