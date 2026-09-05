@@ -49,6 +49,28 @@ CREATE TABLE IF NOT EXISTS technology_constraints (
     FOREIGN KEY (constraint_id) REFERENCES constraints(id)
 );
 
+CREATE TABLE IF NOT EXISTS business_challenges (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS technology_business_challenges (
+    technology_id TEXT NOT NULL,
+    business_challenge_id TEXT NOT NULL,
+    PRIMARY KEY (technology_id, business_challenge_id),
+    FOREIGN KEY (technology_id) REFERENCES high_level_technologies(id),
+    FOREIGN KEY (business_challenge_id) REFERENCES business_challenges(id)
+);
+
+CREATE TABLE IF NOT EXISTS technical_challenge_business_challenges (
+    challenge_id TEXT NOT NULL,
+    business_challenge_id TEXT NOT NULL,
+    PRIMARY KEY (challenge_id, business_challenge_id),
+    FOREIGN KEY (challenge_id) REFERENCES technical_challenges(id),
+    FOREIGN KEY (business_challenge_id) REFERENCES business_challenges(id)
+);
+
 -- Research domain hierarchy
 CREATE TABLE IF NOT EXISTS research_domains (
     id TEXT PRIMARY KEY,

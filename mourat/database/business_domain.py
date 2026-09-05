@@ -351,3 +351,131 @@ def list_technology_constraints(
         (technology_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# -- Business challenges --
+
+
+def create_business_challenge(
+    conn: sqlite3.Connection, id: str, name: str, description: str = ""
+) -> None:
+    conn.execute(
+        "INSERT INTO business_challenges (id, name, description) VALUES (?, ?, ?)",
+        (id, name, description),
+    )
+    conn.commit()
+
+
+def get_business_challenge(conn: sqlite3.Connection, id: str) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM business_challenges WHERE id = ?", (id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_business_challenge(
+    conn: sqlite3.Connection,
+    id: str,
+    name: str | None = None,
+    description: str | None = None,
+) -> None:
+    fields = []
+    values = []
+    if name is not None:
+        fields.append("name = ?")
+        values.append(name)
+    if description is not None:
+        fields.append("description = ?")
+        values.append(description)
+    if not fields:
+        return
+    values.append(id)
+    conn.execute(
+        f"UPDATE business_challenges SET {', '.join(fields)} WHERE id = ?", values
+    )
+    conn.commit()
+
+
+def delete_business_challenge(conn: sqlite3.Connection, id: str) -> None:
+    conn.execute("DELETE FROM business_challenges WHERE id = ?", (id,))
+    conn.commit()
+
+
+def list_business_challenges(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute("SELECT * FROM business_challenges ORDER BY id").fetchall()
+    return [dict(r) for r in rows]
+
+
+# -- Junction: technology ↔ business challenges --
+
+
+def add_technology_business_challenge(
+    conn: sqlite3.Connection, technology_id: str, business_challenge_id: str
+) -> None:
+    conn.execute(
+        "INSERT INTO technology_business_challenges "
+        "(technology_id, business_challenge_id) VALUES (?, ?)",
+        (technology_id, business_challenge_id),
+    )
+    conn.commit()
+
+
+def remove_technology_business_challenge(
+    conn: sqlite3.Connection, technology_id: str, business_challenge_id: str
+) -> None:
+    conn.execute(
+        "DELETE FROM technology_business_challenges "
+        "WHERE technology_id = ? AND business_challenge_id = ?",
+        (technology_id, business_challenge_id),
+    )
+    conn.commit()
+
+
+def list_technology_business_challenges(
+    conn: sqlite3.Connection, technology_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        "SELECT bc.* FROM business_challenges bc "
+        "JOIN technology_business_challenges tbc ON bc.id = tbc.business_challenge_id "
+        "WHERE tbc.technology_id = ? ORDER BY bc.id",
+        (technology_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# -- Junction: technical challenges ↔ business challenges --
+
+
+def add_technical_challenge_business_challenge(
+    conn: sqlite3.Connection, challenge_id: str, business_challenge_id: str
+) -> None:
+    conn.execute(
+        "INSERT INTO technical_challenge_business_challenges "
+        "(challenge_id, business_challenge_id) VALUES (?, ?)",
+        (challenge_id, business_challenge_id),
+    )
+    conn.commit()
+
+
+def remove_technical_challenge_business_challenge(
+    conn: sqlite3.Connection, challenge_id: str, business_challenge_id: str
+) -> None:
+    conn.execute(
+        "DELETE FROM technical_challenge_business_challenges "
+        "WHERE challenge_id = ? AND business_challenge_id = ?",
+        (challenge_id, business_challenge_id),
+    )
+    conn.commit()
+
+
+def list_technical_challenge_business_challenges(
+    conn: sqlite3.Connection, challenge_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        "SELECT bc.* FROM business_challenges bc "
+        "JOIN technical_challenge_business_challenges tcbc "
+        "ON bc.id = tcbc.business_challenge_id "
+        "WHERE tcbc.challenge_id = ? ORDER BY bc.id",
+        (challenge_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]

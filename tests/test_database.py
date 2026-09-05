@@ -26,6 +26,7 @@ def conn():
 
 # -- Business domain CRUD --
 
+
 class TestBusinessDomain:
     def test_create_and_get(self, conn):
         bd.create_business_domain(conn, "ml", "Machine Learning", "ML domain")
@@ -71,7 +72,96 @@ class TestBusinessDomain:
         assert challenges[0]["name"] == "Challenge"
 
 
+# -- Business challenges --
+
+
+class TestBusinessChallenge:
+    def test_create_and_get(self, conn):
+        bd.create_business_challenge(conn, "bc1", "Cost reduction", "Reduce costs")
+        result = bd.get_business_challenge(conn, "bc1")
+        assert result["id"] == "bc1"
+        assert result["name"] == "Cost reduction"
+        assert result["description"] == "Reduce costs"
+
+    def test_get_missing_returns_none(self, conn):
+        assert bd.get_business_challenge(conn, "missing") is None
+
+    def test_update(self, conn):
+        bd.create_business_challenge(conn, "bc1", "Cost", "")
+        bd.update_business_challenge(
+            conn, "bc1", name="Cost reduction", description="desc"
+        )
+        result = bd.get_business_challenge(conn, "bc1")
+        assert result["name"] == "Cost reduction"
+        assert result["description"] == "desc"
+
+    def test_list_ordered_by_id(self, conn):
+        bd.create_business_challenge(conn, "b", "B")
+        bd.create_business_challenge(conn, "a", "A")
+        result = bd.list_business_challenges(conn)
+        assert [r["id"] for r in result] == ["a", "b"]
+
+    def test_delete(self, conn):
+        bd.create_business_challenge(conn, "bc1", "Cost")
+        bd.delete_business_challenge(conn, "bc1")
+        assert bd.get_business_challenge(conn, "bc1") is None
+
+    def test_technology_business_challenge_link(self, conn):
+        bd.create_business_domain(conn, "ml", "ML")
+        bd.create_product(conn, "p1", "P1", "ml")
+        bd.create_technology(conn, "t1", "Tech", "p1")
+        bd.create_business_challenge(conn, "bc1", "BC1")
+        bd.create_business_challenge(conn, "bc2", "BC2")
+        bd.add_technology_business_challenge(conn, "t1", "bc1")
+        bd.add_technology_business_challenge(conn, "t1", "bc2")
+        challenges = bd.list_technology_business_challenges(conn, "t1")
+        assert [c["id"] for c in challenges] == ["bc1", "bc2"]
+        bd.remove_technology_business_challenge(conn, "t1", "bc1")
+        challenges = bd.list_technology_business_challenges(conn, "t1")
+        assert [c["id"] for c in challenges] == ["bc2"]
+
+    def test_technology_business_challenge_duplicate_add(self, conn):
+        bd.create_business_domain(conn, "ml", "ML")
+        bd.create_product(conn, "p1", "P1", "ml")
+        bd.create_technology(conn, "t1", "Tech", "p1")
+        bd.create_business_challenge(conn, "bc1", "BC1")
+        bd.add_technology_business_challenge(conn, "t1", "bc1")
+        with pytest.raises(sqlite3.IntegrityError):
+            bd.add_technology_business_challenge(conn, "t1", "bc1")
+
+    def test_technical_challenge_business_challenge_link(self, conn):
+        bd.create_technical_challenge(conn, "tc1", "TC")
+        bd.create_business_challenge(conn, "bc1", "BC1")
+        bd.add_technical_challenge_business_challenge(conn, "tc1", "bc1")
+        challenges = bd.list_technical_challenge_business_challenges(conn, "tc1")
+        assert [c["id"] for c in challenges] == ["bc1"]
+        bd.remove_technical_challenge_business_challenge(conn, "tc1", "bc1")
+        assert bd.list_technical_challenge_business_challenges(conn, "tc1") == []
+
+    def test_technical_challenge_business_challenge_duplicate_add(self, conn):
+        bd.create_technical_challenge(conn, "tc1", "TC")
+        bd.create_business_challenge(conn, "bc1", "BC1")
+        bd.add_technical_challenge_business_challenge(conn, "tc1", "bc1")
+        with pytest.raises(sqlite3.IntegrityError):
+            bd.add_technical_challenge_business_challenge(conn, "tc1", "bc1")
+
+    def test_junction_fk_enforcement(self, conn):
+        bd.create_business_domain(conn, "ml", "ML")
+        bd.create_product(conn, "p1", "P1", "ml")
+        bd.create_technology(conn, "t1", "Tech", "p1")
+        bd.create_technical_challenge(conn, "tc1", "TC")
+        with pytest.raises(sqlite3.IntegrityError):
+            bd.add_technology_business_challenge(conn, "t1", "missing")
+        with pytest.raises(sqlite3.IntegrityError):
+            bd.add_technology_business_challenge(conn, "missing", "bc1")
+        with pytest.raises(sqlite3.IntegrityError):
+            bd.add_technical_challenge_business_challenge(conn, "tc1", "missing")
+        with pytest.raises(sqlite3.IntegrityError):
+            bd.add_technical_challenge_business_challenge(conn, "missing", "bc1")
+
+
 # -- Research domain CRUD --
+
 
 class TestResearchDomain:
     def test_create_and_get(self, conn):
@@ -94,15 +184,20 @@ class TestResearchDomain:
 
 # -- Content item CRUD --
 
+
 class TestContentItem:
     def test_create_and_get(self, conn):
         ci.create_source_type(conn, "paper", "Paper")
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Test Paper",
-            source_type_id="paper", platform_id="arxiv",
-            influence_metric_id="citations", influence_score=50,
+            conn,
+            "item1",
+            "Test Paper",
+            source_type_id="paper",
+            platform_id="arxiv",
+            influence_metric_id="citations",
+            influence_score=50,
         )
         result = ci.get_content_item(conn, "item1")
         assert result["name"] == "Test Paper"
@@ -113,8 +208,11 @@ class TestContentItem:
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Test Paper",
-            source_type_id="paper", platform_id="arxiv",
+            conn,
+            "item1",
+            "Test Paper",
+            source_type_id="paper",
+            platform_id="arxiv",
             influence_metric_id="citations",
         )
         bd.create_technical_challenge(conn, "tc1", "TC")
@@ -127,6 +225,7 @@ class TestContentItem:
 
 # -- Query engine --
 
+
 class TestQueryEngine:
     @pytest.fixture(autouse=True)
     def _seed(self, conn):
@@ -134,14 +233,22 @@ class TestQueryEngine:
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Alpha beta gamma",
-            source_type_id="paper", platform_id="arxiv",
-            influence_metric_id="citations", influence_score=70,
+            conn,
+            "item1",
+            "Alpha beta gamma",
+            source_type_id="paper",
+            platform_id="arxiv",
+            influence_metric_id="citations",
+            influence_score=70,
         )
         ci.create_content_item(
-            conn, "item2", "Beta delta epsilon",
-            source_type_id="paper", platform_id="arxiv",
-            influence_metric_id="citations", influence_score=30,
+            conn,
+            "item2",
+            "Beta delta epsilon",
+            source_type_id="paper",
+            platform_id="arxiv",
+            influence_metric_id="citations",
+            influence_score=30,
         )
 
     def test_search_by_keywords(self, conn):
@@ -156,9 +263,13 @@ class TestQueryEngine:
 
     def test_search_by_research_question(self, conn):
         ci.create_content_item(
-            conn, "item3", "Linked item",
-            source_type_id="paper", platform_id="arxiv",
-            influence_metric_id="citations", influence_score=90,
+            conn,
+            "item3",
+            "Linked item",
+            source_type_id="paper",
+            platform_id="arxiv",
+            influence_metric_id="citations",
+            influence_score=90,
         )
         rd.create_research_domain(conn, "rd", "RD")
         rd.create_research_direction(conn, "dir", "Dir", "rd")
@@ -193,14 +304,18 @@ class TestQueryEngine:
 
 # -- Item ↔ constraints --
 
+
 class TestItemConstraints:
     def test_add_list_remove_item_constraint(self, conn):
         ci.create_source_type(conn, "paper", "Paper")
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Test Paper",
-            source_type_id="paper", platform_id="arxiv",
+            conn,
+            "item1",
+            "Test Paper",
+            source_type_id="paper",
+            platform_id="arxiv",
             influence_metric_id="citations",
         )
         bd.create_constraint(conn, "c1", "Memory limit")
@@ -218,8 +333,11 @@ class TestItemConstraints:
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Test Paper",
-            source_type_id="paper", platform_id="arxiv",
+            conn,
+            "item1",
+            "Test Paper",
+            source_type_id="paper",
+            platform_id="arxiv",
             influence_metric_id="citations",
         )
         bd.create_constraint(conn, "c1", "Memory limit")
@@ -233,29 +351,36 @@ class TestItemConstraints:
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Test Paper",
-            source_type_id="paper", platform_id="arxiv",
+            conn,
+            "item1",
+            "Test Paper",
+            source_type_id="paper",
+            platform_id="arxiv",
             influence_metric_id="citations",
         )
         conn.execute("DROP TABLE item_constraints")
         conn.commit()
         apply_schema(conn)
-        cols = {
-            r[1] for r in conn.execute("PRAGMA table_info(item_constraints)")
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(item_constraints)")}
+        assert cols == {
+            "content_id",
+            "constraint_id",
+            "justification",
+            "relevance_score",
         }
-        assert cols == {"content_id", "constraint_id", "justification", "relevance_score"}
         # Existing data intact
-        assert conn.execute(
-            "SELECT COUNT(*) FROM content_items"
-        ).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0] == 1
 
     def test_search_by_constraint(self, conn):
         ci.create_source_type(conn, "paper", "Paper")
         ci.create_platform(conn, "arxiv", "Arxiv")
         ci.create_influence_metric(conn, "citations", "Citations")
         ci.create_content_item(
-            conn, "item1", "Test Paper",
-            source_type_id="paper", platform_id="arxiv",
+            conn,
+            "item1",
+            "Test Paper",
+            source_type_id="paper",
+            platform_id="arxiv",
             influence_metric_id="citations",
         )
         bd.create_constraint(conn, "c1", "Memory limit")
@@ -266,4 +391,3 @@ class TestItemConstraints:
         assert results[0]["relevance_score"] == 40
         # Below threshold: excluded
         assert qe.search_by_constraint(conn, "c1", min_score=50) == []
-
