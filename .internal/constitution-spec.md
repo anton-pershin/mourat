@@ -20,8 +20,8 @@ We also assume that we have a table of research topics specified by a user where
 
 Each content item must be relevant to at least one of the research questions OR at least one of the technical challenges OR at least one research topic. For each related research question, technical challenge, constraint and research topic, each content item should have filled relevance attributes and a relevance score. Each content item should also have influence score (either estimated if we talk about a fresh content item or factual).
 
-1. Collect the newest papers from arXiv and prune by relevance.
-2. Collect the most influential papers for a specific research question, technical challenge or a more narrow topic aligned with the given constraints.
+1. Collect the newest papers and prune by relevance.
+2. Collect the most influential papers and posts for a specific research question, technical challenge or a more narrow topic aligned with the given constraints.
 3. Collect the newest posts from one of the specified web resources and find details if they are missing in the posts.
 4. Have the content item database where the content items found by the collection tools can be saved by request. It should support retrieval by keywords, relevant research questions, relevant technical challenges, relevant constraints and relevant research topics.
 
@@ -34,8 +34,8 @@ Each content item must be relevant to at least one of the research questions OR 
 
 ### 3. Acceptance criteria
 
-- **FR1 (collect newest arXiv papers, prune by relevance):** e2e test running the collection pipeline on a small batch of known papers, verifying that irrelevant papers are filtered out and relevant ones are retained with correct relevance scores.
-- **FR2 (collect influential papers for a topic/RQ/TC):** e2e test querying a known topic, verifying that returned papers match expected influential works.
+- **FR1 (collect newest papers, prune by relevance):** e2e test running the collection pipeline on a small batch of known papers, verifying that irrelevant papers are filtered out and relevant ones are retained with correct relevance scores.
+- **FR2 (collect influential papers and posts for a topic/RQ/TC):** e2e test querying a known topic, verifying that returned papers and posts match expected influential works.
 - **FR3 (collect newest posts from web resources, enrich missing details):** e2e test against a known set of posts, verifying that enrichment fills in missing details correctly.
 - **FR4 (content item database with retrieval):** tests for CRUD operations and retrieval by keywords, research questions, technical challenges, constraints and research topics.
 - **NFR1 (collection performance <1h for 2000 items):** benchmark test measuring end-to-end processing time on a 2000-item batch.
@@ -62,9 +62,10 @@ flowchart LR
     User[User / Agent]
     
     subgraph Tools
-        CollectNew["collect_newest_papers"]
-        CollectInf["collect_influential_papers"]
-        CollectPosts["collect_posts"]
+        CollectNewPapers["collect_recent_papers"]
+        CollectNewPosts["collect_recent_posts"]
+        CollectInflPapers["collect_influential_papers"]
+        CollectInflPosts["collect_influential_posts"]
         Retrieve["retrieve_content"]
     end
     
@@ -84,14 +85,17 @@ flowchart LR
         DB[(content DB)]
     end
     
-    User --> CollectNew
-    User --> CollectInf
-    User --> CollectPosts
+    User --> CollectNewPapers
+    User --> CollectNewPosts
+    User --> CollectInflPapers
+    User --> CollectInflPosts
     User --> Retrieve
     
-    CollectNew --> Arxiv
-    CollectInf --> SemScholar
-    CollectPosts --> WebSrc
+    CollectNewPapers --> Arxiv
+    CollectInflPapers --> Arxiv
+    CollectInflPapers --> SemScholar
+    CollectNewPosts --> WebSrc
+    CollectInflPosts --> WebSrc
     
     Arxiv --> Filter --> Score --> DB
     SemScholar --> Score --> DB
@@ -114,13 +118,32 @@ flowchart LR
 
 #### 6.1 Todo list
 
-1. **[DONE] Refactor existing scripts into modular components** — decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure.
-2. **[DONE] Build content database layer** — implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, constraints and topics.
-3. **[DONE] Build collect_posts with enricher** — implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web.
-4. **Refactor collect_newest_papers** — add deep paper analysis, logging and database interaction
-5. **Refactor collect_recent_influential_papers** — add deep paper analysis, logging and database interaction
-6. **Add e2e tests** — write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates.
-7. **Add concurrent processing** — implement concurrency where it is possible (concurrent requests to an LLM, concurrent data collection requests etc.)
-8. **Add benchmark tests** — implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min).
-9. **Implement tool registry** — create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration.
-10. **Validate CLI usability** — ensure all scripts are clean, documented, and usable directly from the command line by a human.
+| ID | Name | Status | Expected result | Duration | Strong scaling efficiency |
+|----|------|--------|-----------------|----------|---------------------------|
+| M1 | Refactor existing scripts into modular components | Done | decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure. | 1 | 0.8 |
+| M2 | Build content database layer | Done | implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, constraints and topics. | 1 | 0.8 |
+| M3 | Build `collect_posts` with enricher | Done | implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web. | 1 | 0.8 |
+| M4 | Refactor `collect_recent_influential_papers` | Doing | add web search, deep paper analysis, logging and database interaction | 3 | 0.8 |
+| M5 | Refactor `collect_newest_papers` | To do | add deep paper analysis, logging and database interaction | 4 | 0.8 |
+| M6 | Add e2e tests | To do | write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates. | 4 | 0.8 |
+| M7 | Add benchmark tests | To do | implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min). | 1 | 0.8 |
+| M8 | Add concurrent processing | To do | implement concurrency where it is possible (concurrent requests to an LLM, concurrent data collection requests etc.) | 1 | 0.8 |
+| M9 | Implement tool registry | To do | create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration. | 1 | 0.8 |
+| M10 | Validate CLI usability | To do | ensure all scripts are clean, documented, and usable directly from the command line by a human. | 1 | 0.8 |
+
+```mermaid
+flowchart TD
+  M1 --> M2
+  M2 --> M3
+  M2 --> M4
+  M2 --> M5
+  M2 --> M6
+  M3 --> M7
+  M4 --> M7
+  M5 --> M7
+  M3 --> M8
+  M4 --> M8
+  M5 --> M8
+  M8 --> M9
+  M9 --> M10
+```
