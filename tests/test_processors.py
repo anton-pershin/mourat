@@ -225,7 +225,7 @@ class TestQueryGeneratorViaLlm:
         assert len(result.specific_queries) == 1
 
 
-# --- PostScorer ---
+# --- PostContentItemScorer (generalised scorer, post binding) ---
 
 
 def _make_sample_post(**overrides):
@@ -246,7 +246,9 @@ def _make_sample_post(**overrides):
 
 
 def _make_scorer(
-    captured_prompts: list[str], captured_monitoring: list[str], scripted_scores: list,
+    captured_prompts: list[str],
+    captured_monitoring: list[str],
+    scripted_scores: list,
     constraint_list: list | None = None,
 ):
     """Create a PostScorer with a FunctionModel returning scripted scoring results.
@@ -254,7 +256,7 @@ def _make_scorer(
     scripted_scores: list of lists of raw score-entry dicts returned per call.
     """
     from mourat.data_models import ScoringResult
-    from mourat.processors.post_scorer import PostScorer
+    from mourat.processors.content_item_scorer import PostContentItemScorer
 
     def model_fn(messages, agent):
         captured_prompts.append(messages[-1].parts[-1].content)
@@ -268,11 +270,12 @@ def _make_scorer(
         def __call__(self, step: str, text_for_monitoring: str) -> None:
             captured_monitoring.append(text_for_monitoring)
 
-    return PostScorer(
+    return PostContentItemScorer(
         monitoring_handler=CapturingHandler(),
         model=FunctionModel(model_fn),
         rq_list=[{"id": "rq1", "name": "RQ one", "type": "rq", "description": "d"}],
         constraint_list=constraint_list or [],
+        constraints_contribute_to_filtering_score=False,
     )
 
 
@@ -324,7 +327,7 @@ class TestPostScorerAdditionalContextAndMaxScore:
         assert "RAW TEXT" in prompt
         assert "Additional context" not in prompt
 
-    def test_max_score_ignores_unknown_ids(self):
+    def test_filtering_score_ignores_unknown_ids(self):
         from mourat.data_models import (
             EnrichedRedditPost,
             EnrichedRedditPostCollection,
@@ -355,10 +358,10 @@ class TestPostScorerAdditionalContextAndMaxScore:
         assert len(sp.relevance_scores) == 1
         assert sp.relevance_scores[0].id == "rq1"
         assert sp.relevance_scores[0].score == 40
-        assert sp.max_score == 40.0
-        assert "Max score: 40" in captured_monitoring[-1]
+        assert sp.filtering_score == 40.0
+        assert "Filtering score: 40" in captured_monitoring[-1]
 
-    def test_max_score_zero_when_no_valid_entries(self):
+    def test_filtering_score_zero_when_no_valid_entries(self):
         from mourat.data_models import (
             EnrichedRedditPost,
             EnrichedRedditPostCollection,
@@ -386,7 +389,7 @@ class TestPostScorerAdditionalContextAndMaxScore:
 
         sp = output.posts[0]
         assert sp.relevance_scores == []
-        assert sp.max_score == 0.0
+        assert sp.filtering_score == 0.0
         assert len(output.posts) == 1  # post retained, not dropped
 
     def test_constraint_scores_returned(self):
@@ -400,11 +403,23 @@ class TestPostScorerAdditionalContextAndMaxScore:
         scorer = _make_scorer(
             captured_prompts,
             captured_monitoring,
-            [[
-                {"id": "c1", "type": "constraint", "score": 70, "justification": "aligned"},
-            ]],
+            [
+                [
+                    {
+                        "id": "c1",
+                        "type": "constraint",
+                        "score": 70,
+                        "justification": "aligned",
+                    },
+                ]
+            ],
             constraint_list=[
-                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+                {
+                    "id": "c1",
+                    "name": "Memory limit",
+                    "type": "constraint",
+                    "description": "d",
+                }
             ],
         )
 
@@ -415,11 +430,11 @@ class TestPostScorerAdditionalContextAndMaxScore:
         assert len(sp.relevance_scores) == 1
         assert sp.relevance_scores[0].type == "constraint"
         assert sp.relevance_scores[0].score == 70
-        # Constraint scores do not count toward max_score
-        assert sp.max_score == 0.0
+        # Constraint scores do not count toward filtering_score (post config)
+        assert sp.filtering_score == 0.0
         assert "Memory limit" in captured_prompts[0]
 
-    def test_max_score_excludes_constraints(self):
+    def test_filtering_score_excludes_constraints(self):
         from mourat.data_models import (
             EnrichedRedditPost,
             EnrichedRedditPostCollection,
@@ -430,12 +445,29 @@ class TestPostScorerAdditionalContextAndMaxScore:
         scorer = _make_scorer(
             captured_prompts,
             captured_monitoring,
-            [[
-                {"id": "rq1", "type": "rq", "score": 90, "justification": "relevant"},
-                {"id": "c1", "type": "constraint", "score": 20, "justification": "fails"},
-            ]],
+            [
+                [
+                    {
+                        "id": "rq1",
+                        "type": "rq",
+                        "score": 90,
+                        "justification": "relevant",
+                    },
+                    {
+                        "id": "c1",
+                        "type": "constraint",
+                        "score": 20,
+                        "justification": "fails",
+                    },
+                ]
+            ],
             constraint_list=[
-                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+                {
+                    "id": "c1",
+                    "name": "Memory limit",
+                    "type": "constraint",
+                    "description": "d",
+                }
             ],
         )
 
@@ -443,10 +475,10 @@ class TestPostScorerAdditionalContextAndMaxScore:
         output = scorer(EnrichedRedditPostCollection(posts=[ep]), step_id="1")
 
         sp = output.posts[0]
-        assert sp.max_score == 90.0
+        assert sp.filtering_score == 90.0
         assert {e.type for e in sp.relevance_scores} == {"rq", "constraint"}
 
-    def test_max_score_constraint_only(self):
+    def test_filtering_score_constraint_only(self):
         from mourat.data_models import (
             EnrichedRedditPost,
             EnrichedRedditPostCollection,
@@ -457,11 +489,23 @@ class TestPostScorerAdditionalContextAndMaxScore:
         scorer = _make_scorer(
             captured_prompts,
             captured_monitoring,
-            [[
-                {"id": "c1", "type": "constraint", "score": 85, "justification": "high"},
-            ]],
+            [
+                [
+                    {
+                        "id": "c1",
+                        "type": "constraint",
+                        "score": 85,
+                        "justification": "high",
+                    },
+                ]
+            ],
             constraint_list=[
-                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+                {
+                    "id": "c1",
+                    "name": "Memory limit",
+                    "type": "constraint",
+                    "description": "d",
+                }
             ],
         )
 
@@ -469,7 +513,7 @@ class TestPostScorerAdditionalContextAndMaxScore:
         output = scorer(EnrichedRedditPostCollection(posts=[ep]), step_id="1")
 
         sp = output.posts[0]
-        assert sp.max_score == 0.0
+        assert sp.filtering_score == 0.0
         assert len(sp.relevance_scores) == 1
         assert sp.relevance_scores[0].type == "constraint"
 
@@ -484,16 +528,23 @@ class TestPostScorerAdditionalContextAndMaxScore:
         scorer = _make_scorer(
             captured_prompts,
             captured_monitoring,
-            [[
-                {
-                    "id": "hallucinated",
-                    "type": "constraint",
-                    "score": 95,
-                    "justification": "phantom",
-                },
-            ]],
+            [
+                [
+                    {
+                        "id": "hallucinated",
+                        "type": "constraint",
+                        "score": 95,
+                        "justification": "phantom",
+                    },
+                ]
+            ],
             constraint_list=[
-                {"id": "c1", "name": "Memory limit", "type": "constraint", "description": "d"}
+                {
+                    "id": "c1",
+                    "name": "Memory limit",
+                    "type": "constraint",
+                    "description": "d",
+                }
             ],
         )
 
@@ -502,4 +553,4 @@ class TestPostScorerAdditionalContextAndMaxScore:
 
         sp = output.posts[0]
         assert sp.relevance_scores == []
-        assert sp.max_score == 0.0
+        assert sp.filtering_score == 0.0

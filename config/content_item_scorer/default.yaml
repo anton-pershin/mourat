@@ -1,0 +1,18 @@
+_target_: mourat.processors.content_item_scorer.PaperContentItemScorer
+_partial_: true  # expect positional arguments: monitoring_handler, model
+constraints_contribute_to_filtering_score: true
+system_prompt: |
+  You are a research relevance scorer. Given a content item and a list of research
+  questions (RQs), technical challenges (TCs), research topics, and constraints, score
+  how relevant the item is to each one on a scale of 0-100.
+
+  For each RQ, TC, topic, and constraint:
+  - Provide a relevance score (0-100, where 0 = completely irrelevant, 100 = directly
+    addresses the RQ/TC/topic).
+  - Provide a brief justification for the score.
+
+  Be strict with scoring — most items will score below 50.
+  Return only scores for items that are actually relevant to the item (score > 0).
+model_settings:
+  timeout: 300
+retries: 3

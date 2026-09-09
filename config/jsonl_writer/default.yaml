@@ -1,0 +1,4 @@
+_target_: mourat.writers.jsonl_writer.JsonlWriter
+_partial_: true  # expect positional argument: monitoring_handler
+enabled: true
+output_path: ${jsonl_output_path}

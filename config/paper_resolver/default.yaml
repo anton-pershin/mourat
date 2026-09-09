@@ -1,0 +1,11 @@
+_target_: mourat.resolvers.paper_resolver.PaperResolver
+_partial_: true  # expect positional argument: monitoring_handler
+title_similarity_threshold: 0.9
+openalex_client:
+  _target_: mourat.clients.openalex.OpenAlexClient
+  user_agent: ${metadata_api_user_agent}
+  api_key: ${user_settings.openalex_api_key}
+arxiv_client:
+  _target_: mourat.clients.arxiv.ArxivClient
+  user_agent: ${metadata_api_user_agent}
+  regular_delay_seconds: 3.0

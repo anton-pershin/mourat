@@ -291,13 +291,141 @@ class ScoredRedditPost(BaseModel):
     post: RedditPostInfo
     additional_context: list[str] = []
     relevance_scores: list[ScoreEntry] = []
-    max_score: float = 0.0
+    filtering_score: float = 0.0
 
 
 class ScoredRedditPostCollection(BaseModel):
     """Collection of scored Reddit posts."""
 
     posts: list[ScoredRedditPost]
+
+
+# -- Paper collection models --
+
+
+class PaperCandidate(BaseModel):
+    """A candidate paper discovered by the LLM agent, as a bibliographic description.
+
+    Carries no identifier fields by design: any DOI or arXiv id the agent
+    produces is discarded, not stored (spec decision 4.3).
+    """
+
+    title: str = Field(description="Title of the paper as discovered")
+    authors: list[str] = Field(description="Authors of the paper, as found")
+    description: str = Field(
+        description="Short description of the paper drawn from the pages read"
+    )
+    urls_seen: list[str] = Field(
+        description="URLs encountered while discovering the paper, as-encountered"
+    )
+    provenance: list[str] = Field(
+        default_factory=lambda: ["web_search"],
+        description=(
+            "Generator or agent names that produced this candidate. The "
+            "discovery agent leaves the default single web-search entry; "
+            "seed expansion records every generator that produced the "
+            "candidate (spec 11 §5.3)."
+        ),
+    )
+
+
+class PaperCandidateCollection(BaseModel):
+    """Collection of discovered paper candidates."""
+
+    papers: list[PaperCandidate]
+
+
+class ResolvedPaper(BaseModel):
+    """A candidate paper resolved to canonical metadata, per spec section 5.3.
+
+    Content-item attributes (what the writers persist) come first; everything
+    else is in-flight only — identifiers, influence fields, resolution status
+    and the url-absence reason never reach the database.
+    """
+
+    # -- content item attributes --
+    title: str
+    abstract: str = ""
+    authors: list[str] = []
+    publication_date: str | None = None
+    url: str = ""
+    # provenance is a content-item attribute: it persists with the paper (FR5)
+    provenance: list[str] = Field(default_factory=lambda: ["web_search"])
+    # -- in-flight only --
+    doi: str | None = None
+    arxiv_id: str | None = None
+    work_id: str | None = None
+    influence_fwci: float | None = None
+    influence_cited_by_count: int | None = None
+    influence_score: int | None = None
+    influence_measure_used: str | None = None
+    resolution_status: str = "unresolved"
+    url_absent_reason: str | None = None
+
+
+class ResolvedPaperCollection(BaseModel):
+    """Collection of resolved papers."""
+
+    papers: list[ResolvedPaper]
+
+
+class ScoredPaper(BaseModel):
+    """A resolved paper with relevance scores."""
+
+    paper: ResolvedPaper
+    relevance_scores: list[ScoreEntry] = []
+    filtering_score: float = 0.0
+
+
+class ScoredPaperCollection(BaseModel):
+    """Collection of scored papers."""
+
+    papers: list[ScoredPaper]
+
+
+class ContentItemCollection(BaseModel):
+    """Collection wrapper for stored content items (any source type).
+
+    Spec 11 needs this so `SeedResolver` can take a proper Pydantic
+    collection as its input type.
+    """
+
+    items: list[ContentItem]
+
+
+class Seed(BaseModel):
+    """A stored content item identified as an expansion seed (spec 11 §5.3).
+
+    `work_id` is the metadata-API identifier assigned by `SeedResolver`
+    (in-flight only); `influence_value` is the seed's normalised influence
+    used for the floor derivation.
+    """
+
+    content_item_id: str
+    work_id: str | None = None
+    title: str
+    influence_value: float | None = None
+
+
+class SeedCollection(BaseModel):
+    """Collection of seeds resolved from stored content items."""
+
+    seeds: list[Seed]
+
+
+class ContentItemScoringInput(BaseModel):
+    """Neutral item shape the generalised scorer consumes."""
+
+    id: str
+    title: str
+    body_text: str = ""
+    context_points: list[str] = []
+
+
+class ContentItemScoringInputCollection(BaseModel):
+    """Collection wrapper for the neutral scoring input."""
+
+    items: list[ContentItemScoringInput]
 
 
 # -- Slop classification pipeline models --

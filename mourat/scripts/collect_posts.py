@@ -14,7 +14,7 @@ from mourat.database import content_item as ci
 from mourat.database import create_connection
 from mourat.database import research_domain as rd
 from mourat.monitoring import MonitoringHandler
-from mourat.processors.post_scorer import PostScorer
+from mourat.processors.content_item_scorer import PostContentItemScorer
 from mourat.utils.common import get_config_path
 
 logger = logging.getLogger(__name__)
@@ -209,7 +209,7 @@ def collect_posts_main(cfg: DictConfig) -> None:
 
     # Step 6: Score
     scoring_llm: Model = hydra.utils.instantiate(cfg.scoring_llm)
-    scorer: PostScorer = hydra.utils.instantiate(cfg.scorer)(
+    scorer: PostContentItemScorer = hydra.utils.instantiate(cfg.scorer)(
         monitoring_handler,
         model=scoring_llm,
         rq_list=scoring_rq_list,

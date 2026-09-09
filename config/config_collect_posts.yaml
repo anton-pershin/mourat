@@ -27,13 +27,14 @@ enricher:
   tool_calls_limit: 10
   tool_call_rejection_buffer: 4
 
-# Scorer
+# Scorer (generalised content item scorer, post binding)
 scorer:
-  _target_: mourat.processors.post_scorer.PostScorer
+  _target_: mourat.processors.content_item_scorer.PostContentItemScorer
   _partial_: true  # expect positional arguments: monitoring_handler, model
   rq_list: ${scoring.rq_list}
   tc_list: ${scoring.tc_list}
   topic_list: ${scoring.topic_list}
+  constraints_contribute_to_filtering_score: false
   system_prompt: ${scoring.system_prompt}
   model_settings:
     timeout: ${scoring.agent.timeout}
@@ -54,7 +55,7 @@ slop_verdict_filter:
   _target_: mourat.filters.SlopFilter
   _partial_: true  # expect positional argument: monitoring_handler
 
-# Score filter
+# Score filter (generalised score filter, post binding)
 score_filter:
   _target_: mourat.filters.PostScoreFilter
   _partial_: true  # expect positional argument: monitoring_handler

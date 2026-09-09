@@ -1,0 +1,10 @@
+_target_: mourat.processors.influence_assessor.InfluenceAssessor
+_partial_: true  # expect positional argument: monitoring_handler
+fwci_breakpoints:
+  - [1.0, 10]
+  - [10.0, 50]
+  - [100.0, 90]
+citations_per_year_breakpoints:
+  - [1.0, 10]
+  - [10.0, 50]
+  - [100.0, 90]

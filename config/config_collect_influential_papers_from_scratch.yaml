@@ -1,0 +1,37 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/caila_glm_5_3_flash@discovery_llm
+  - llm/caila_glm_5_3_flash@scoring_llm
+  - paper_discoverer: default
+  - paper_resolver: default
+  - influence_assessor: default
+  - arxiv_pdf_verifier: default
+  - content_item_scorer: default
+  - score_filter: default
+  - db_writer: default
+  - jsonl_writer: default
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+db_path: ${user_settings.db_path}
+
+# Identifying User-Agent sent to OpenAlex/arXiv (NFR2 metadata-API politeness)
+metadata_api_user_agent: "mourat/0.1 (mailto:contact@example.com)"
+
+# Research attribute ids to collect for (loaded from the database).
+# Leave a list empty to skip that kind of attribute; at least one must resolve.
+research_question_ids: []
+technical_challenge_ids: []
+research_topic_ids: []
+constraint_ids: []
+
+# Scoring threshold on the filtering score (0-100)
+score_threshold: 50
+
+# JSONL output path (used when jsonl_writer.enabled is true)
+jsonl_output_path: ${result_dir}/papers.jsonl

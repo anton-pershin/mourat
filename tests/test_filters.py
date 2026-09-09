@@ -11,29 +11,48 @@ def _make_monitoring_handler():
     class DummyHandler(MonitoringHandler):
         def __init__(self):
             self.calls = []
+
         def __call__(self, step: str, text_for_monitoring: str) -> None:
             self.calls.append((step, text_for_monitoring))
+
     return DummyHandler()
 
 
 def _make_scored_papers():
-    return ScoredPaperInfoCollection(papers=[
-        ScoredPaperInfo(
-            title="Paper A", link="http://a", abstract="abs A",
-            citation_count=10, authors=["A"], publication_date=datetime.date(2024, 1, 1),
-            score=5, justification="Great",
-        ),
-        ScoredPaperInfo(
-            title="Paper B", link="http://b", abstract="abs B",
-            citation_count=5, authors=["B"], publication_date=datetime.date(2024, 1, 2),
-            score=3, justification="Okay",
-        ),
-        ScoredPaperInfo(
-            title="Paper C", link="http://c", abstract="abs C",
-            citation_count=1, authors=["C"], publication_date=datetime.date(2024, 1, 3),
-            score=1, justification="Poor",
-        ),
-    ])
+    return ScoredPaperInfoCollection(
+        papers=[
+            ScoredPaperInfo(
+                title="Paper A",
+                link="http://a",
+                abstract="abs A",
+                citation_count=10,
+                authors=["A"],
+                publication_date=datetime.date(2024, 1, 1),
+                score=5,
+                justification="Great",
+            ),
+            ScoredPaperInfo(
+                title="Paper B",
+                link="http://b",
+                abstract="abs B",
+                citation_count=5,
+                authors=["B"],
+                publication_date=datetime.date(2024, 1, 2),
+                score=3,
+                justification="Okay",
+            ),
+            ScoredPaperInfo(
+                title="Paper C",
+                link="http://c",
+                abstract="abs C",
+                citation_count=1,
+                authors=["C"],
+                publication_date=datetime.date(2024, 1, 3),
+                score=1,
+                justification="Poor",
+            ),
+        ]
+    )
 
 
 class TestScoreBasedPaperFilter:
@@ -138,7 +157,9 @@ class TestHeuristicSlopFilter:
         f = HeuristicSlopFilter(_make_monitoring_handler(), drop_link_only=True)
         posts = _make_posts(
             _make_post("link", text="https://example.com/some-page"),
-            _make_post("linkplus", text="https://example.com/x and here is my take on it"),
+            _make_post(
+                "linkplus", text="https://example.com/x and here is my take on it"
+            ),
             _make_post("prose"),
         )
         result = f(posts, "2")
@@ -187,7 +208,9 @@ class TestHeuristicSlopFilter:
     def test_disabled_rule_never_drops(self):
         # min_text_chars omitted entirely (None) -> short post kept by this rule.
         f = HeuristicSlopFilter(_make_monitoring_handler(), min_score=5)
-        posts = _make_posts(_make_post("short", text="tiny"), _make_post("low", score=1))
+        posts = _make_posts(
+            _make_post("short", text="tiny"), _make_post("low", score=1)
+        )
         result = f(posts, "2")
         ids = {p.submission_id for p in result.posts}
         assert ids == {"short"}
@@ -285,3 +308,121 @@ class TestSlopFilter:
         assert "meme post" in text
         assert marked.posts[0].post.url in text
         assert marked.posts[1].post.url not in text
+
+
+# --- InfluenceFloorFilter (spec 11 task 5) ---
+
+from mourat.data_models import ResolvedPaper, ResolvedPaperCollection  # noqa: E402
+from mourat.filters import InfluenceFloorFilter  # noqa: E402
+
+
+def _make_resolved(title="Candidate", influence_score=None, **overrides):
+    defaults: dict = {
+        "title": title,
+        "abstract": "abstract",
+        "authors": ["A"],
+        "publication_date": "2024-01-01",
+        "url": "",
+    }
+    defaults.update(overrides)
+    paper = ResolvedPaper(**defaults)
+    paper.influence_score = influence_score
+    return paper
+
+
+def _make_floor_filter(seed_influences, percentile=10.0):
+    return InfluenceFloorFilter(
+        monitoring_handler=_make_monitoring_handler(),
+        seed_influences=seed_influences,
+        percentile=percentile,
+    )
+
+
+def _run_filter(f, data):
+    """Run via __call__ (output only); monitoring text read from the handler."""
+    handler = f.monitoring_handler
+    output = f(data, "5")
+    assert handler.calls, "monitoring handler was not called"
+    return output, handler.calls[-1][1]
+
+
+class TestDeriveFloor:
+    def test_percentile_of_seed_influences(self):
+        """10th percentile of 1..10 = 1.9 (linear interpolation between ranks)."""
+        f = _make_floor_filter([float(i) for i in range(1, 11)])
+        assert f.derive_floor() == 1.9
+
+    def test_single_seed_floor_is_that_seed(self):
+        f = _make_floor_filter([42.0])
+        assert f.derive_floor() == 42.0
+
+    def test_no_seeds_yields_no_floor(self):
+        f = _make_floor_filter([])
+        assert f.derive_floor() is None
+
+    def test_floor_rule_taken_from_configured_percentile(self):
+        f = _make_floor_filter([float(i) for i in range(1, 11)], percentile=50.0)
+        assert f.derive_floor() == 5.5
+
+
+class TestInfluenceFloorFilterRun:
+    def test_drops_candidates_below_floor(self):
+        f = _make_floor_filter([50.0, 60.0, 70.0, 80.0, 90.0], percentile=10.0)
+        # floor = 54.0 (10th pct of the five values)
+        data = ResolvedPaperCollection(
+            papers=[
+                _make_resolved("Low", influence_score=53),
+                _make_resolved("At Floor", influence_score=54),
+                _make_resolved("Above", influence_score=90),
+            ]
+        )
+        result, monitoring = _run_filter(f, data)
+        assert [p.title for p in result.papers] == ["At Floor", "Above"]
+        assert "Low" in monitoring
+        assert "54" in monitoring
+
+    def test_one_sided_floor_never_rejects_high_influence(self):
+        """FR4: far above the floor is a better result, never a rejection."""
+        f = _make_floor_filter([90.0], percentile=10.0)
+        data = ResolvedPaperCollection(
+            papers=[_make_resolved("Very Influential", influence_score=100)]
+        )
+        result, _ = _run_filter(f, data)
+        assert [p.title for p in result.papers] == ["Very Influential"]
+
+    def test_unmeasurable_candidates_are_dropped_and_reported(self):
+        """A candidate with no computable influence cannot meet the bar."""
+        f = _make_floor_filter([50.0])
+        data = ResolvedPaperCollection(
+            papers=[
+                _make_resolved("No Score", influence_score=None),
+                _make_resolved("Scored", influence_score=60),
+            ]
+        )
+        result, monitoring = _run_filter(f, data)
+        assert [p.title for p in result.papers] == ["Scored"]
+        assert "No Score" in monitoring
+        assert "influence_unmeasurable" in monitoring
+
+    def test_monitoring_leads_with_dropped_and_floor(self):
+        f = _make_floor_filter([50.0, 60.0], percentile=10.0)
+        data = ResolvedPaperCollection(
+            papers=[_make_resolved("Weak", influence_score=50)]
+        )
+        _, monitoring = _run_filter(f, data)
+        first_line = monitoring.split("\n")[0]
+        assert "kept: 0" in first_line
+        assert "dropped: 1" in first_line
+        assert "floor" in first_line
+        assert "Weak" in monitoring
+
+    def test_all_candidates_above_floor_all_kept(self):
+        f = _make_floor_filter([10.0, 20.0], percentile=10.0)
+        data = ResolvedPaperCollection(
+            papers=[
+                _make_resolved("A", influence_score=80),
+                _make_resolved("B", influence_score=90),
+            ]
+        )
+        result, _ = _run_filter(f, data)
+        assert [p.title for p in result.papers] == ["A", "B"]

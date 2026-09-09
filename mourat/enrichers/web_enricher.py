@@ -5,14 +5,10 @@ from __future__ import annotations
 import logging
 import time
 
-import requests
-from bs4 import BeautifulSoup
 from pydantic_ai import Agent, AgentRunResult
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.models import Model
-from pydantic_ai.usage import RunUsage, UsageLimits
-from pydantic_ai.tools import RunContext
-from trafilatura import extract
+from pydantic_ai.usage import UsageLimits
 
 from mourat.base import Function
 from mourat.data_models import (
@@ -22,6 +18,7 @@ from mourat.data_models import (
     RedditPostCollection,
 )
 from mourat.monitoring import MonitoringHandler
+from mourat.tools.web import attach_web_tools
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +49,6 @@ def _create_enrichment_agent(
     tool_call_rejection_buffer: int = 4,
 ) -> Agent:
     """Create an enrichment agent with URL extraction and web search tools."""
-    tool_time_total = 0.0
-
     agent = Agent(
         model,
         output_type=EnrichmentResult,
@@ -62,95 +57,9 @@ def _create_enrichment_agent(
         retries=retries,
         deps_type=dict,
     )
-
-    def _ensure_tool_call_within_buffer(ctx: RunContext[dict]) -> str | None:
-        usage: RunUsage = ctx.usage
-        usage_limits: UsageLimits = ctx.usage_limits
-        if usage.tool_calls + tool_call_rejection_buffer > usage_limits.tool_calls_limit:
-            logger.debug(
-                "attempted to exceed tool call limit",
-            )
-            return (
-                "Tool call limit is exceeded. "
-                "Do not call tools anymore. "
-                "Answer the request based on the available information"
-            )
-        else:
-            return None
-
-
-    @agent.tool
-    def extract_url(ctx: RunContext[dict], url: str) -> str:
-        """Extract main article content from a URL."""
-
-        if error_msg := _ensure_tool_call_within_buffer(ctx):
-            return error_msg
-
-        nonlocal tool_time_total
-        t_tool = time.monotonic()
-        try:
-            resp = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-            resp.raise_for_status()
-            content = extract(
-                resp.text, url=url, include_comments=False, include_tables=True
-            )
-            if content:
-                return content
-            return f"No extractable content found at {url}"
-        except Exception as e:
-            return f"Error extracting {url}: {e}"
-        finally:
-            tool_time_total += time.monotonic() - t_tool
-            logger.debug(
-                "extract_url '%s' | %.2fs (tool total %.2fs)",
-                url,
-                time.monotonic() - t_tool,
-                tool_time_total,
-            )
-
-    @agent.tool
-    def web_search(ctx: RunContext[dict], query: str, max_results: int = 5) -> str:
-        """Search the web for information related to a query."""
-
-        if error_msg := _ensure_tool_call_within_buffer(ctx):
-            return error_msg
-
-        nonlocal tool_time_total
-        t_tool = time.monotonic()
-        try:
-            resp = requests.post(
-                "https://lite.duckduckgo.com/lite/",
-                data={"q": query},
-                headers={
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
-                },
-                timeout=30,
-            )
-            soup = BeautifulSoup(resp.text, "html.parser")
-            links = soup.select("a.result-link")
-            results = []
-            for a in links[:max_results]:
-                title = a.get_text(strip=True)
-                href = a.get("href", "")
-                results.append(f"Title: {title}\nURL: {href}")
-
-            if not results:
-                return f"No results found for query: {query}"
-            return "\n\n".join(results)
-        except Exception as e:
-            return f"Error searching for '{query}': {e}"
-        finally:
-            tool_time_total += time.monotonic() - t_tool
-            logger.debug(
-                "web_search '%s' | %.2fs (tool total %.2fs)",
-                query,
-                time.monotonic() - t_tool,
-                tool_time_total,
-            )
-
-    agent._mourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
-
-    return agent
+    return attach_web_tools(
+        agent, tool_call_rejection_buffer=tool_call_rejection_buffer
+    )
 
 
 class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
@@ -203,7 +112,7 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                     prompt,
                     usage_limits=UsageLimits(
                         request_limit=self.request_limit,
-                        tool_calls_limit=self.tool_calls_limit
+                        tool_calls_limit=self.tool_calls_limit,
                     ),
                 )
             except UsageLimitExceeded as e:

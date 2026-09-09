@@ -1,0 +1,3 @@
+_target_: mourat.filters.PaperScoreFilter
+_partial_: true  # expect positional argument: monitoring_handler
+score_threshold: ${score_threshold}

@@ -6,6 +6,8 @@ db_path: ${user_settings.project_path}/main.db
 
 caila_api_key: "YOUR_API_KEY" 
 
+openalex_api_key: null  # set to your OpenAlex premium API key string to use the authenticated tier
+
 reddit:
     client_id: YOUR_CLIENT_ID
     client_secret: YOUR_CLIENT_SECRET

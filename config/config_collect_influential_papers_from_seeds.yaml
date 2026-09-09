@@ -1,0 +1,41 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/caila_glm_5_3_flash@scoring_llm
+  - seed_resolver: default
+  - seed_expander: default
+  - paper_resolver: default
+  - influence_assessor: default
+  - influence_floor_filter: default
+  - arxiv_pdf_verifier: default
+  - content_item_scorer: default
+  - score_filter: default
+  - db_writer: default
+  - jsonl_writer: default
+
+project_path: ${user_settings.project_path}
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+db_path: ${user_settings.db_path}
+
+# Identifying User-Agent sent to OpenAlex/arXiv (NFR metadata-API politeness)
+metadata_api_user_agent: "mourat/0.1 (mailto:contact@example.com)"
+
+# Seed content items are retrieved via links to these research attribute ids.
+# Leave a list empty to skip that kind of seed source; at least one attribute
+# must yield linked content items, otherwise the run aborts (FR1).
+# The same research questions / technical challenges are the attributes the
+# scorer scores candidates against; additional optional scoring attributes:
+research_topic_ids: []
+constraint_ids: []
+seed_research_question_ids: []
+seed_technical_challenge_ids: []
+
+# Scoring threshold on the filtering score (0-100)
+score_threshold: 50
+
+# JSONL output path (used when jsonl_writer.enabled is true)
+jsonl_output_path: ${result_dir}/papers_from_seeds.jsonl

@@ -1,0 +1,3 @@
+_target_: mourat.filters.InfluenceFloorFilter
+_partial_: true  # expect positional argument: monitoring_handler
+percentile: 10.0

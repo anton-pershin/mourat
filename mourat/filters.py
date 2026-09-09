@@ -1,12 +1,18 @@
-import re
 import logging
+import math
+import re
 
 from mourat.base import Function
 from mourat.data_models import (
     ClassifiedRedditPostCollection,
     RedditPostCollection,
     RedditPostInfo,
+    ResolvedPaper,
+    ResolvedPaperCollection,
+    ScoredPaper,
+    ScoredPaperCollection,
     ScoredPaperInfoCollection,
+    ScoredRedditPost,
     ScoredRedditPostCollection,
     ScoreEntry,
 )
@@ -47,49 +53,89 @@ class ScoreBasedPaperFilter(
         return output, text_for_monitoring
 
 
-class PostScoreFilter(Function[ScoredRedditPostCollection, ScoredRedditPostCollection]):
-    """Filters scored Reddit posts by max_score threshold."""
+class ScoreFilter(Function):
+    """Drops scored items whose filtering_score is below the threshold.
+
+    Item-agnostic core: domain bindings set `items_attr` and implement
+    `_render_item` / `_make_output`. Sub-criterion entries whose score is
+    below the threshold are removed from the retained items' relevance_scores
+    (as PostScoreFilter did). Monitoring leads with the dropped items.
+    """
+
+    items_attr: str = "posts"
 
     def __init__(
         self,
         monitoring_handler: MonitoringHandler,
         score_threshold: float,
-        text_for_monitoring_template: str = (
-            "{count} posts passed score threshold ({threshold}+)"
-        ),
     ) -> None:
         self.score_threshold = score_threshold
-        self.text_for_monitoring_template = text_for_monitoring_template
         super().__init__(monitoring_handler)
 
-    def _run(
-        self, data: ScoredRedditPostCollection
-    ) -> tuple[ScoredRedditPostCollection, str]:
-        output = ScoredRedditPostCollection(posts=[])
-        text_for_monitoring = ""
+    def _render_item(self, item) -> str:
+        raise NotImplementedError
 
-        for p in data.posts:
-            if p.max_score >= self.score_threshold:
-                p.relevance_scores: list[ScoreEntry] = [
-                    se for se in p.relevance_scores if se.score >= self.score_threshold
+    def _make_output(self, items):
+        raise NotImplementedError
+
+    def _run(self, data) -> tuple:
+        kept = []
+        dropped = []
+
+        for item in getattr(data, self.items_attr):
+            if item.filtering_score >= self.score_threshold:
+                item.relevance_scores = [
+                    se
+                    for se in item.relevance_scores
+                    if se.score >= self.score_threshold
                 ]
-                output.posts.append(p)
-                text_for_monitoring += (
-                    f"### {p.post.title}\n"
-                    f"URL: {p.post.url}\n"
-                    f"Max score: {p.max_score}\n\n"
-                )
+                kept.append(item)
+            else:
+                dropped.append(item)
 
-        text_for_monitoring = (
-            self.text_for_monitoring_template.format(
-                count=len(output.posts),
-                threshold=self.score_threshold,
-            )
-            + "\n\n"
-            + text_for_monitoring
+        total = len(kept) + len(dropped)
+        pct = (100.0 * len(dropped) / total) if total else 0.0
+        lines = [
+            f"Items in: {total}, kept: {len(kept)}, dropped: {len(dropped)} "
+            f"({pct:.1f}% dropped, threshold {self.score_threshold})"
+        ]
+        for item in dropped:
+            lines.append(self._render_item(item))
+
+        return self._make_output(kept), "\n".join(lines)
+
+
+class PostScoreFilter(ScoreFilter):
+    """Filters scored Reddit posts by filtering_score threshold."""
+
+    items_attr = "posts"
+
+    def _render_item(self, p: ScoredRedditPost) -> str:
+        return (
+            f"### {p.post.title}\n"
+            f"URL: {p.post.url}\n"
+            f"Filtering score: {p.filtering_score}\n\n"
         )
 
-        return output, text_for_monitoring
+    def _make_output(self, items) -> ScoredRedditPostCollection:
+        return ScoredRedditPostCollection(posts=items)
+
+
+class PaperScoreFilter(ScoreFilter):
+    """Filters scored papers by filtering_score threshold."""
+
+    items_attr = "papers"
+
+    def _render_item(self, p: ScoredPaper) -> str:
+        url = p.paper.url or "(none)"
+        return (
+            f"### {p.paper.title}\n"
+            f"URL: {url}\n"
+            f"Filtering score: {p.filtering_score}\n\n"
+        )
+
+    def _make_output(self, items) -> ScoredPaperCollection:
+        return ScoredPaperCollection(papers=items)
 
 
 class HeuristicSlopFilter(Function[RedditPostCollection, RedditPostCollection]):
@@ -183,6 +229,78 @@ class HeuristicSlopFilter(Function[RedditPostCollection, RedditPostCollection]):
             )
 
         return RedditPostCollection(posts=kept), "\n".join(lines)
+
+
+class InfluenceFloorFilter(Function[ResolvedPaperCollection, ResolvedPaperCollection]):
+    """The one-sided, seed-derived influence floor (spec 11 FR4).
+
+    The floor is a percentile of the resolved seed set's normalised
+    influence values (4.2, Idea A): a candidate is dropped unless its own
+    normalised influence reaches that floor. One-sided by design — a
+    candidate far above the floor is a better result, never a rejection.
+    Candidates the assessor could not measure carry no influence and cannot
+    be shown to reach the bar, so they are dropped and reported too.
+
+    A very small seed set makes a percentile unstable; that is a config-
+    documentation concern (4.2), not a code special case.
+    """
+
+    def __init__(
+        self,
+        monitoring_handler: MonitoringHandler,
+        seed_influences: list[float],
+        percentile: float = 10.0,
+    ) -> None:
+        self.seed_influences = [float(v) for v in seed_influences]
+        self.percentile = percentile
+        super().__init__(monitoring_handler)
+
+    def derive_floor(self) -> float | None:
+        """The percentile of the seed influence values, or None with no seeds."""
+        if not self.seed_influences:
+            return None
+        values = sorted(self.seed_influences)
+        # linear interpolation between closest ranks (numpy's default method)
+        pos = (len(values) - 1) * (self.percentile / 100.0)
+        lower = math.floor(pos)
+        upper = math.ceil(pos)
+        if lower == upper:
+            return values[int(pos)]
+        frac = pos - lower
+        return values[lower] * (1.0 - frac) + values[upper] * frac
+
+    def _run(
+        self, data: ResolvedPaperCollection
+    ) -> tuple[ResolvedPaperCollection, str]:
+        floor = self.derive_floor()
+        kept: list[ResolvedPaper] = []
+        dropped: list[tuple[ResolvedPaper, str]] = []
+
+        for item in data.papers:
+            score = item.influence_score
+            if score is None:
+                dropped.append((item, "influence_unmeasurable"))
+            elif floor is not None and score < floor:
+                dropped.append((item, f"below_floor_{floor:g}"))
+            else:
+                kept.append(item)
+
+        total = len(data.papers)
+        lines = [
+            f"Papers in: {total}, kept: {len(kept)}, dropped: {len(dropped)} "
+            f"(floor {floor if floor is not None else 'n/a'} "
+            f"= p{self.percentile:g} of {len(self.seed_influences)} seeds)"
+        ]
+        for item, reason in dropped:
+            score_text = (
+                f"{item.influence_score:g}"
+                if item.influence_score is not None
+                else "unmeasurable"
+            )
+            lines.append(
+                f"### {item.title}\nInfluence: {score_text} | Reason: {reason}\n"
+            )
+        return ResolvedPaperCollection(papers=kept), "\n".join(lines)
 
 
 class SlopFilter(Function[ClassifiedRedditPostCollection, RedditPostCollection]):

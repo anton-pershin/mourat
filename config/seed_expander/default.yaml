@@ -1,0 +1,9 @@
+_target_: mourat.collectors.seed_expander.SeedExpander
+_partial_: true  # expect positional argument: monitoring_handler
+forward_budget: 20
+search_budget: 20
+backward_budget: 20
+openalex_client:
+  _target_: mourat.clients.openalex.OpenAlexClient
+  user_agent: ${metadata_api_user_agent}
+  api_key: ${user_settings.openalex_api_key}

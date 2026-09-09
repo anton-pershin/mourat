@@ -19,3 +19,7 @@ def normalize_author_name(s: str) -> str:
 
 def to_text_description(template: str, paper_info: PaperInfo | ScoredPaperInfo) -> str:
     return dedent(template).format(**(paper_info.model_dump())) + "\n"
+
+
+def to_title_preview(full_title: str) -> str:
+    return full_title[:20] + ("…" if len(full_title) > 20 else "")
