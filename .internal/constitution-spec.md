@@ -123,13 +123,14 @@ flowchart LR
 | M1 | Refactor existing scripts into modular components | Done | decouple collectors, scorers, filters, and database logic into independently configurable Hydra modules. Ensure each script uses the new module structure. | 1 | 0.8 |
 | M2 | Build content database layer | Done | implement file-based storage with retrieval API supporting queries by keywords, research questions, technical challenges, constraints and topics. | 1 | 0.8 |
 | M3 | Build `collect_posts` with enricher | Done | implement a new script based on `print_reddit_summary.py` to collect posts and enrich them with details found on the Web. | 1 | 0.8 |
-| M4 | Refactor `collect_recent_influential_papers` | Doing | add web search, deep paper analysis, logging and database interaction | 3 | 0.8 |
+| M4 | Refactor `collect_recent_influential_papers` | Done | add web search, logging and database interaction | 3 | 0.8 |
 | M5 | Refactor `collect_newest_papers` | To do | add deep paper analysis, logging and database interaction | 4 | 0.8 |
-| M6 | Add e2e tests | To do | write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates. | 4 | 0.8 |
-| M7 | Add benchmark tests | To do | implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min). | 1 | 0.8 |
-| M8 | Add concurrent processing | To do | implement concurrency where it is possible (concurrent requests to an LLM, concurrent data collection requests etc.) | 1 | 0.8 |
-| M9 | Implement tool registry | To do | create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration. | 1 | 0.8 |
-| M10 | Validate CLI usability | To do | ensure all scripts are clean, documented, and usable directly from the command line by a human. | 1 | 0.8 |
+| M6 | Build web resource autodiscovery | To do | implement a new script which will probe new web resources via web search and seed content items and sketch collectors for them | 4 | 0.8 |
+| M7 | Add e2e tests | To do | write end-to-end tests covering full collection pipelines for each source (arXiv, Semantic Scholar, web), retrieval, and database updates. | 4 | 0.8 |
+| M8 | Add benchmark tests | To do | implement performance tests for collection (2000 items < 1h) and retrieval (5000 items < 1min). | 1 | 0.8 |
+| M9 | Add concurrent processing | To do | implement concurrency where it is possible (concurrent requests to an LLM, concurrent data collection requests etc.) | 1 | 0.8 |
+| M10 | Implement tool registry | To do | create the thin wrapper layer that maps typed agent calls to Hydra-configured modules for agent harness integration. | 1 | 0.8 |
+| M11 | Validate CLI usability | To do | ensure all scripts are clean, documented, and usable directly from the command line by a human. | 1 | 0.8 |
 
 ```mermaid
 flowchart TD
