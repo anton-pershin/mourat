@@ -116,7 +116,23 @@ def _retrieve_seed_items(conn, cfg: DictConfig) -> ContentItemCollection:
             )
         _absorb(rows, f"technical challenge '{challenge_id}'")
 
-    return ContentItemCollection(items=list(items.values()))
+    collection = ContentItemCollection(items=list(items.values()))
+
+    explicit_ids = list(cfg.get("seed_content_item_ids", []))
+    if explicit_ids:
+        id_set = set(explicit_ids)
+        retrieved_ids = {item.id for item in collection.items}
+        unmatched = sorted(id_set - retrieved_ids)
+        if unmatched:
+            raise ValueError(
+                "seed_content_item_ids contains ids matching no retrieved seed "
+                f"item: {unmatched}"
+            )
+        collection = ContentItemCollection(
+            items=[item for item in collection.items if item.id in id_set]
+        )
+
+    return collection
 
 
 def _load_scoring_attributes(

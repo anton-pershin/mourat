@@ -34,6 +34,11 @@ constraint_ids: []
 seed_research_question_ids: []
 seed_technical_challenge_ids: []
 
+# Optional explicit seed selection: when non-empty, only the retrieved seed
+# items whose content-item id is listed here become seeds. Every listed id
+# must match a retrieved item, otherwise the run aborts.
+seed_content_item_ids: []
+
 # Scoring threshold on the filtering score (0-100)
 score_threshold: 50
 
