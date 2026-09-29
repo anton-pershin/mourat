@@ -66,10 +66,10 @@ def run_query(conn, cfg):
         return
 
     table = Table(title=f"Found {len(results)} content item(s)")
-    table.add_column("ID", style="cyan")
+    table.add_column("ID", style="cyan", overflow="fold")
     table.add_column("Name", style="green")
     table.add_column("Score", justify="right")
-    table.add_column("URL")
+    table.add_column("URL", overflow="fold")
 
     for item in results:
         score = (
