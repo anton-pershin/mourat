@@ -652,6 +652,7 @@ class TestSeedItemRetrieval:
         base = {
             "seed_research_question_ids": ["q1"],
             "seed_technical_challenge_ids": [],
+            "seed_content_item_ids": [],
         }
         base.update(overrides)
         return OmegaConf.create(base)
@@ -709,6 +710,170 @@ class TestSeedItemRetrieval:
             )
         assert any("ghost-id" in r.message for r in caplog.records)
         assert collection.items == []
+
+    def test_explicit_ids_filter_keeps_subset(self, db_conn):
+        """T1 (R2): non-empty explicit list keeps only the named items."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        collection = _retrieve_seed_items(
+            db_conn,
+            self._make_cfg(
+                seed_technical_challenge_ids=["tc1"],
+                seed_content_item_ids=["item2"],
+            ),
+        )
+        assert {item.id for item in collection.items} == {"item2"}
+
+    def test_explicit_ids_empty_list_imposes_no_restriction(self, db_conn):
+        """T2 (R2): empty explicit list means no restriction."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        collection = _retrieve_seed_items(
+            db_conn,
+            self._make_cfg(seed_technical_challenge_ids=["tc1"]),
+        )
+        assert {item.id for item in collection.items} == {"item1", "item2"}
+
+    def test_explicit_ids_apply_to_merged_sources(self, db_conn):
+        """T3 (R2): both retrieval sources are merged before filtering."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        collection = _retrieve_seed_items(
+            db_conn,
+            self._make_cfg(
+                seed_technical_challenge_ids=["tc1"],
+                seed_content_item_ids=["item1", "item2"],
+            ),
+        )
+        assert [item.id for item in collection.items] == ["item1", "item2"]
+
+    def test_explicit_ids_duplicates_are_harmless(self, db_conn):
+        """T4 (R2): duplicate ids within the list deduplicate, no error."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        collection = _retrieve_seed_items(
+            db_conn,
+            self._make_cfg(seed_content_item_ids=["item1", "item1"]),
+        )
+        assert [item.id for item in collection.items] == ["item1"]
+
+    def test_explicit_unmatched_id_aborts(self, db_conn):
+        """T5 (R3): an id matching no retrieved item aborts before expansion."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        with pytest.raises(ValueError) as exc_info:
+            _retrieve_seed_items(
+                db_conn,
+                self._make_cfg(
+                    seed_technical_challenge_ids=["tc1"],
+                    seed_content_item_ids=["ghost-id"],
+                ),
+            )
+        assert "ghost-id" in str(exc_info.value)
+
+    def test_explicit_partial_match_still_aborts(self, db_conn):
+        """T6 (R3): one matched + one unmatched id still aborts."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        with pytest.raises(ValueError) as exc_info:
+            _retrieve_seed_items(
+                db_conn,
+                self._make_cfg(
+                    seed_technical_challenge_ids=["tc1"],
+                    seed_content_item_ids=["item2", "ghost-id"],
+                ),
+            )
+        assert "ghost-id" in str(exc_info.value)
+
+    def test_explicit_ids_do_not_touch_scoring_attributes(self, db_conn):
+        """T7 (R4): the explicit seed list never contributes scoring attributes."""
+        from omegaconf import OmegaConf
+
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _load_scoring_attributes,
+        )
+
+        self._seed_db(db_conn)
+        cfg = OmegaConf.create(
+            {
+                "seed_research_question_ids": [],
+                "seed_technical_challenge_ids": [],
+                "research_topic_ids": [],
+                "constraint_ids": [],
+                "seed_content_item_ids": ["item1"],
+            }
+        )
+        rq_list, tc_list, topic_list, constraint_list = _load_scoring_attributes(
+            db_conn, cfg
+        )
+        assert rq_list == []
+        assert tc_list == []
+        assert topic_list == []
+        assert constraint_list == []
+
+    def test_all_empty_configuration_returns_empty_collection(self, db_conn):
+        """T8 (B1): everything empty -> empty collection, same as today."""
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        collection = _retrieve_seed_items(
+            db_conn,
+            self._make_cfg(
+                seed_research_question_ids=[],
+                seed_technical_challenge_ids=[],
+                seed_content_item_ids=[],
+            ),
+        )
+        assert collection.items == []
+
+    def test_non_paper_item_passes_the_filter(self, db_conn):
+        """T9 (B2): a Reddit-style item linked to tc1 passes the filter."""
+        from mourat.database import content_item as ci
+        from mourat.scripts.collect_influential_papers_from_seeds import (
+            _retrieve_seed_items,
+        )
+
+        self._seed_db(db_conn)
+        ci.create_platform(db_conn, "reddit", "Reddit")
+        ci.create_influence_metric(db_conn, "upvotes", "Upvotes")
+        ci.create_content_item(
+            db_conn,
+            "post1",
+            "Some AI news post",
+            source_type_id="paper",
+            platform_id="reddit",
+            influence_metric_id="upvotes",
+        )
+        ci.add_item_technical_challenge(db_conn, "post1", "tc1", "match", 50)
+        collection = _retrieve_seed_items(
+            db_conn,
+            self._make_cfg(
+                seed_research_question_ids=[],
+                seed_technical_challenge_ids=["tc1"],
+                seed_content_item_ids=["post1"],
+            ),
+        )
+        assert [item.id for item in collection.items] == ["post1"]
 
 
 class TestLoadScoringAttributes:
