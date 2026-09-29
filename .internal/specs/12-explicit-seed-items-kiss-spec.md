@@ -131,16 +131,16 @@ failure reasons stay distinguishable.
 
 ### 3.3 Todo list
 
-1. [ ] Write the tests (T1–T9 in `tests/test_paper_collection.py`; extend `_make_cfg`
+1. [x] Write the tests (T1–T9 in `tests/test_paper_collection.py`; extend `_make_cfg`
        with the new default)
-2. [ ] Run all the tests and ensure that they fail
-3. [ ] Add `seed_content_item_ids: []` to
+2. [x] Run all the tests and ensure that they fail
+3. [x] Add `seed_content_item_ids: []` to
        `config/config_collect_influential_papers_from_seeds.yaml` with the explanatory
        comment
-4. [ ] Implement the filter + unmatched-id abort in `_retrieve_seed_items`
-5. [ ] Run the test suite until green (pytest, targeted at `test_paper_collection.py`
+4. [x] Implement the filter + unmatched-id abort in `_retrieve_seed_items`
+5. [x] Run the test suite until green (pytest, targeted at `test_paper_collection.py`
        first, then full)
-6. [ ] Run linters on touched files (black, isort, pylint E, mypy scoped)
+6. [x] Run linters on touched files (black, isort, pylint E, mypy scoped)
 
 ### 3.4 Modification summary
 
