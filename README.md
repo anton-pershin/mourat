@@ -15,50 +15,105 @@ pip install -r requirements.txt
 3. Set up `/config/user_settings/user_settings.yaml`. Currently, the config relies on Caila API but it is trivial to modify it to your needs
 4. Run one of the scripts `/mourat/scripts/XXX.py` and do not forget to modify the corresponding config file in `/config/config_XXX.yaml'
 ```bash
-python kygs/scripts/XXX.py
+python -m mourat.scripts.XXX
 ```
 
 ⚠️  DO NOT commit your `user_settings.yaml`
 
 ## Scripts
 
-### `run_pipeline.py`
+### `collect_influential_papers_from_scratch.py`
 
-Runs a configurable pipeline for collecting, filtering, and scoring arXiv papers based on their relevance to your research topic.
+Discovers influential papers **from scratch**: an LLM agent with web search proposes
+candidate papers for the configured research attributes, then the pipeline resolves,
+assesses, verifies, scores, filters, and stores them.
 
-#### Configuration
+Pipeline: discover (LLM agent with web search) → resolve (OpenAlex/arXiv metadata,
+unresolved candidates are dropped) → assess influence (normalised fwci /
+citations-per-year → 0-100) → verify arXiv PDF (records a verified PDF url or an empty
+url with a reason) → score relevance (0-100 per research attribute, with constraints
+contributing to the filtering score) → threshold filter → write.
 
-1. In `user_settings.yaml`, set up your:
-   ```yaml
-   project_path: /path/to/your/project
-   caila_api_key: "your-caila-api-key"  # Required for paper scoring
-   ```
+#### Configuration (`config_collect_influential_papers_from_scratch.yaml`)
 
-2. In `config_run_pipeline.yaml`, modify:
-   - `paper_topic`: define your research area (e.g., "bio-inspired visual processing")
-   - `problem_being_addressed`: specify your concrete research problem
-   - Pipeline parameters:
-     - ArxivPaperCollector: `start_date`, `end_date`, `max_results`. ArXiv API has some stupid bug: sometimes, it outputs significantly less papers than specified by `max_results`. Incrementing `max_results` by 10 usually helps
-     - BinaryPaperClassifier: no changes needed in general
-     - PaperScorer: no changes needed in general
-     - ScoreBasedPaperFilter: set `score_threshold` (default: 4)
+- Research attributes (research question / technical challenge / topic / constraints)
+  are referenced by their DB ids; the pipeline loads their text from the database.
+- Discovery, resolution, assessment, and the scoring threshold are configured via the
+  corresponding component config groups (Hydra); all budgets are configurable.
+- Output: `ContentItemDbWriter` (database) and/or `JsonlWriter` (one JSON line per
+  paper, including relevance scores and justifications) — each independently enabled.
 
-#### Output
+### `collect_influential_papers_from_seeds.py`
 
-The pipeline generates files in `${result_dir}` (default: `hydra_root/YYYY-MM-DD/HH-MM-SS/`) with step-by-step results (the filename and format are specified by `monitoring_handler`):
+Expands papers **from seeds**: retrieves content items already stored as relevant to
+the configured research attributes, resolves each seed, and generates candidates three
+ways — forward citation expansion (works citing each seed), relevance-ranked search
+built from seed titles, and backward expansion (the works each seed cites). The
+candidates are merged and de-duplicated by OpenAlex work id, then pass through the same
+resolve → assess → verify → score → filter → write tail as the from-scratch script,
+with one addition: a **seed-derived influence floor** (a one-sided threshold derived
+from the normalised influence of the seed set itself) applied before scoring. Each
+candidate's provenance records which generator(s) produced it.
 
-1. **ArXiv paper collection**
-   - Title and abstract of each paper from arXiv
-   - Direct link to the paper
+#### Configuration (`config_collect_influential_papers_from_seeds.yaml`)
 
-2. **Classification results**
-   - Filter out the papers irrelevant to `paper_topic`, the structure of the content remains the same
+- Same research-attribute references as the from-scratch script.
+- Per-generator candidate budgets (forward / search / backward) and the influence-floor
+  derivation rule come from Hydra config.
+- `seed_content_item_ids` (optional): restricts seed retrieval to an explicit list of
+  content-item ids (an intersection with the attribute-retrieved seeds). An empty list
+  means no restriction; a listed id that matches no retrieved seed aborts the run.
+- Writers are configured identically to the from-scratch script.
 
-3. **Scoring Results**
-   - Add score (0-5) and detailed justification to each paper
+### `collect_posts.py`
 
-4. **Final Filtered Results**
-   - Filter out the papers with scores ≥ threshold (default: 4)
+Collects Reddit posts, enriches them with web-retrieved content, scores them against
+the configured research attributes, and saves the results to the content database.
+This is the replacement for the deprecated `print_reddit_summary.py`.
+
+#### Configuration (`config_collect_posts.yaml`)
+
+- Reddit client credentials come from `user_settings.yaml`.
+- Research attributes for scoring are loaded from the database (no hardcoded lists).
+- Scoring uses `PostContentItemScorer`; its `score_filter` threshold is configured
+  inline in the config.
+
+### `collect_newest_papers.py`
+
+Collects recent arXiv papers, classifies them against your research topic with a
+binary LLM classifier, scores the survivors, and filters by score. A lighter-weight
+alternative to the influential-paper pipelines when you only care about new arXiv
+submissions.
+
+#### Configuration (`config_collect_newest_papers.yaml`)
+
+- ArxivPaperCollector: `start_date`, `end_date`, `max_results`. ArXiv API has some
+  stupid bug: sometimes, it outputs significantly less papers than specified by
+  `max_results`. Incrementing `max_results` by 10 usually helps
+- BinaryPaperClassifier: no changes needed in general
+- PaperScorer: no changes needed in general
+- ScoreBasedPaperFilter: set `score_threshold` (default: 4)
+
+### `retrieve_content.py`
+
+Query the content database from the CLI (not a pipeline — a read-only query tool):
+
+```bash
+python -m mourat.scripts.retrieve_content db_path=/path/to/mourat.db query_type=keywords keyword_query="transformer"
+```
+
+Query types: `keywords`, `research_question`, `technical_challenge`, `research_topic`,
+`influence_score`.
+
+### Deprecated / auxiliary scripts
+
+- `collect_recent_influential_papers.py` — legacy Semantic Scholar-based pipeline; the
+  S2 API is unreachable unauthenticated, so this script is effectively non-functional
+  and superseded by `collect_influential_papers_from_scratch.py`.
+- `generate_queries.py` — generates search queries for a candidate topic via LLM.
+- `assess_candidate_topic.py` — assesses a candidate topic against the business
+  hierarchy in the database.
+- `print_reddit_summary.py` — **deprecated**, superseded by `collect_posts.py`.
 
 ## Storage layer
 
