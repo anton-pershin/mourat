@@ -15,7 +15,6 @@ defaults:
   - db_writer: default
   - jsonl_writer: default
 
-project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}
@@ -32,12 +31,21 @@ metadata_api_user_agent: "mourat/0.1 (mailto:contact@example.com)"
 research_topic_ids: []
 constraint_ids: []
 seed_research_question_ids: []
-seed_technical_challenge_ids: []
+seed_technical_challenge_ids:
+  - prefill_time_reduction
+  - decode_time_reduction
+  - reasoning_time_reduction
+  - llm_kv_cache_reduction
+  - llm_model_size_reduction
 
 # Optional explicit seed selection: when non-empty, only the retrieved seed
 # items whose content-item id is listed here become seeds. Every listed id
 # must match a retrieved item, otherwise the run aborts.
-seed_content_item_ids: []
+seed_content_item_ids: 
+  - paper_awq_activation_aware_weight_quantization_for_llm_compression_and_acceleration
+  - paper_abq_llm_arbitrary_bit_quantized_inference_acceleration_for_large_language_models
+  - paper_a_survey_on_model_compression_for_large_language_models
+  - paper_layerskip_enabling_early_exit_inference_and_self_speculative_decoding
 
 # Scoring threshold on the filtering score (0-100)
 score_threshold: 50

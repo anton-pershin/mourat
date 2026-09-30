@@ -14,7 +14,6 @@ defaults:
   - db_writer: default
   - jsonl_writer: default
 
-project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}

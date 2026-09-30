@@ -12,13 +12,11 @@ conda activate mourat
 ```bash
 pip install -r requirements.txt
 ```
-3. Set up `/config/user_settings/user_settings.yaml`. Currently, the config relies on Caila API but it is trivial to modify it to your needs
+3. Set up environment variables mentioned in `/config/user_settings/user_settings.yaml`. Currently, the config relies on Caila API but it is trivial to modify it to your needs
 4. Run one of the scripts `/mourat/scripts/XXX.py` and do not forget to modify the corresponding config file in `/config/config_XXX.yaml'
 ```bash
 python -m mourat.scripts.XXX
 ```
-
-⚠️  DO NOT commit your `user_settings.yaml`
 
 ## Scripts
 

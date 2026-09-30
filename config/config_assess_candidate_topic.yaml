@@ -6,7 +6,6 @@ defaults:
   - llm/caila_qwen3_8b@slow_llm
   - candidate_topic_assessor: candidate_topic_assessor
 
-project_path: ${user_settings.project_path}
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}

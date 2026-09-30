@@ -1,14 +1,12 @@
-project_path: /path/to/this/repo
-hydra_root: ${user_settings.project_path}/hydra
+hydra_root: ${oc.env:MOURAT_HYDRA_PATH, /tmp/mourat_hydra}
 hydra_dir: ${user_settings.hydra_root}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 result_dir: ${user_settings.hydra_dir}
-db_path: ${user_settings.project_path}/main.db
+db_path: ${oc.env:MOURAT_DB_PATH, null}
 
-caila_api_key: "YOUR_API_KEY" 
-
-openalex_api_key: null  # set to your OpenAlex premium API key string to use the authenticated tier
+caila_api_key: ${oc.env:CAILA_API_KEY, null}
+openalex_api_key: ${oc.env:OPENALEX_API_KEY, null}  # set to your OpenAlex premium API key string to use the authenticated tier
 
 reddit:
-    client_id: YOUR_CLIENT_ID
-    client_secret: YOUR_CLIENT_SECRET
+    client_id: ${oc.env:MOURAT_REDDIT_CLIENT_ID, null}
+    client_secret: ${oc.env:MOURAT_REDDIT_CLIENT_SECRET, null}
     user_agent: python 
