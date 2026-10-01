@@ -223,20 +223,22 @@ def collect_influential_papers_from_seeds_main(cfg: DictConfig) -> None:
             "Check the configured seed attribute ids and the log for details."
         )
 
+    paper_graph_client = hydra.utils.instantiate(cfg.paper_graph_client)
     seed_resolver: SeedResolver = hydra.utils.instantiate(cfg.seed_resolver)(
-        monitoring_handler
+        monitoring_handler, paper_graph_client=paper_graph_client
     )
     step_id = "1"
     seeds = seed_resolver(seed_items, step_id=step_id)
 
     expander: SeedExpander = hydra.utils.instantiate(cfg.seed_expander)(
-        monitoring_handler
+        monitoring_handler, paper_graph_client=paper_graph_client
     )
     step_id = "2"
     candidates: PaperCandidateCollection = expander(seeds, step_id=step_id)
 
     resolver: PaperResolver = hydra.utils.instantiate(cfg.paper_resolver)(
-        monitoring_handler
+        monitoring_handler,
+        paper_graph_client=paper_graph_client,
     )
     step_id = "3"
     resolved: ResolvedPaperCollection = resolver(candidates, step_id=step_id)

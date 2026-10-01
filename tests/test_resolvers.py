@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.data_models import (
     ContentItem,
     ContentItemCollection,
@@ -40,22 +41,18 @@ def _make_candidate(**overrides) -> PaperCandidate:
     return PaperCandidate(**defaults)
 
 
-def _openalex_hit(**overrides) -> dict:
+def _openalex_hit(**overrides) -> PaperRecord:
     record = {
-        "id": "https://openalex.org/W123",
-        "doi": "https://doi.org/10.5555/3294995",
-        "display_name": "Attention Is All You Need",
+        "identity": PaperIdentity.from_values(doi="10.5555/3294995"),
+        "title": "Attention Is All You Need",
+        "authors": ["Ashish Vaswani", "Noam Shazeer"],
+        "abstract": "Attention is all",
         "publication_date": "2017-06-12",
-        "authorships": [
-            {"author": {"display_name": "Ashish Vaswani"}},
-            {"author": {"display_name": "Noam Shazeer"}},
-        ],
-        "abstract_inverted_index": {"Attention": [0], "is": [1], "all": [2]},
-        "fwci": 6139.0,
-        "cited_by_count": 88404,
+        "raw_influence": {"fwci": 6139.0},
+        "citation_count": 88404,
     }
     record.update(overrides)
-    return record
+    return PaperRecord(**record)
 
 
 def _make_resolver(openalex=None, arxiv=None, threshold=0.9) -> PaperResolver:
@@ -105,10 +102,7 @@ class TestAbstractFromInvertedIndex:
 class TestResolveByTitle:
     def test_resolved_record_carries_canonical_metadata(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit()],
-        }
+        openalex.search_papers.return_value = PaperPage(papers=[_openalex_hit()])
         resolver = _make_resolver(openalex=openalex)
         result, monitoring = _run(
             resolver,
@@ -122,14 +116,13 @@ class TestResolveByTitle:
         assert rp.abstract == "Attention is all"
         assert rp.authors == ["Ashish Vaswani", "Noam Shazeer"]
         assert rp.publication_date == "2017-06-12"
-        assert rp.work_id == "https://openalex.org/W123"
-        assert rp.doi == "https://doi.org/10.5555/3294995"
+        assert rp.doi == "10.5555/3294995"
         assert rp.url == ""  # verifier's job, stays empty here
         assert rp.resolution_status == "resolved"
 
     def test_no_api_hit_marks_unresolved_and_drops(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {"meta": {}, "results": []}
+        openalex.search_papers.return_value = PaperPage(papers=[])
         resolver = _make_resolver(openalex=openalex)
         result, monitoring = _run(
             resolver,
@@ -139,7 +132,7 @@ class TestResolveByTitle:
         )
         assert result.papers == []
         assert "unresolved" in monitoring.lower()
-        assert "no_work_found" in monitoring
+        assert "no_paper_found" in monitoring
 
 
 class TestResolveByArxivId:
@@ -147,10 +140,9 @@ class TestResolveByArxivId:
         arxiv = MagicMock()
         arxiv.get_title_by_id.return_value = "Attention Is All You Need"
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit()],
-        }
+        openalex.resolve_by_arxiv_id.return_value = _openalex_hit(
+            identity=PaperIdentity.from_values(arxiv_id="1706.03762")
+        )
         resolver = _make_resolver(openalex=openalex, arxiv=arxiv)
         result, monitoring = _run(
             resolver, PaperCandidateCollection(papers=[_make_candidate()])
@@ -158,41 +150,39 @@ class TestResolveByArxivId:
         assert len(result.papers) == 1
         rp = result.papers[0]
         assert rp.arxiv_id == "1706.03762"
-        assert rp.work_id == "https://openalex.org/W123"
         assert "arxiv=1706.03762" in monitoring
 
-    def test_arxiv_title_mismatch_marks_unresolved(self):
-        # A candidate whose arXiv id names a *different* paper: the id is a
-        # hint only, the resolved record must carry nothing from it (FR1).
-        arxiv = MagicMock()
-        arxiv.get_title_by_id.return_value = "A Completely Different Work"
-        resolver = _make_resolver(arxiv=arxiv)
+    def test_arxiv_title_mismatch_is_checked_by_provider_record(self):
+        client = MagicMock()
+        client.resolve_by_arxiv_id.return_value = _openalex_hit(
+            title="A Completely Different Work",
+            identity=PaperIdentity.from_values(arxiv_id="1706.03762"),
+        )
+        resolver = _make_resolver(openalex=client)
         result, monitoring = _run(
             resolver, PaperCandidateCollection(papers=[_make_candidate()])
         )
         assert result.papers == []
-        assert "arxiv_title_mismatch" in monitoring
+        assert "provider_title_mismatch" in monitoring
 
-    def test_unknown_arxiv_id_marks_unresolved(self):
-        arxiv = MagicMock()
-        arxiv.get_title_by_id.return_value = None
-        resolver = _make_resolver(arxiv=arxiv)
+    def test_unknown_arxiv_id_is_unresolved(self):
+        client = MagicMock()
+        client.resolve_by_arxiv_id.return_value = None
+        client.search_papers.return_value = PaperPage(papers=[])
+        resolver = _make_resolver(openalex=client)
         result, monitoring = _run(
             resolver, PaperCandidateCollection(papers=[_make_candidate()])
         )
         assert result.papers == []
-        assert "1706.03762" in monitoring
+        assert "no_paper_found" in monitoring
 
 
 class TestTitleCrossCheck:
     def test_openalex_top_hit_beyond_threshold_rejected_wholesale(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [
-                _openalex_hit(display_name="Something Else Entirely About Models")
-            ],
-        }
+        openalex.search_papers.return_value = PaperPage(
+            papers=[_openalex_hit(title="Something Else Entirely About Models")]
+        )
         resolver = _make_resolver(openalex=openalex)
         result, monitoring = _run(
             resolver,
@@ -201,21 +191,20 @@ class TestTitleCrossCheck:
             ),
         )
         assert result.papers == []
-        assert "openalex_title_mismatch" in monitoring
+        assert "provider_title_mismatch" in monitoring
 
     def test_supplied_doi_never_reaches_record_on_mismatch(self):
         # The rejected-shape test: a resolver that trusted the API record's
         # doi despite the title mismatch fails this.
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [
+        openalex.search_papers.return_value = PaperPage(
+            papers=[
                 _openalex_hit(
-                    display_name="Different Paper",
-                    doi="https://doi.org/10.5555/wrong",
+                    title="Different Paper",
+                    identity=PaperIdentity.from_values(doi="10.5555/wrong"),
                 )
-            ],
-        }
+            ]
+        )
         resolver = _make_resolver(openalex=openalex)
         result, _ = _run(
             resolver,
@@ -229,10 +218,7 @@ class TestTitleCrossCheck:
 class TestMonitoring:
     def test_monitoring_leads_with_counts(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit()],
-        }
+        openalex.search_papers.return_value = PaperPage(papers=[_openalex_hit()])
         resolver = _make_resolver(openalex=openalex)
         _, monitoring = _run(
             resolver,
@@ -253,7 +239,7 @@ class TestMonitoring:
     def test_every_candidate_failing_resolution_completes_and_reports(self):
         """FR5: all-fail run completes, reports counts and every claimed title."""
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {"meta": {}, "results": []}
+        openalex.search_papers.return_value = PaperPage(papers=[])
         resolver = _make_resolver(openalex=openalex)
         result, monitoring = _run(
             resolver,
@@ -308,10 +294,7 @@ def _run_seeds(resolver, items):
 class TestSeedResolver:
     def test_resolves_seed_via_title_search_with_work_id(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit()],
-        }
+        openalex.search_papers.return_value = PaperPage(papers=[_openalex_hit()])
         resolver = _make_seed_resolver(openalex=openalex)
         result, _ = _run_seeds(
             resolver, ContentItemCollection(items=[_make_content_item()])
@@ -319,15 +302,12 @@ class TestSeedResolver:
         assert len(result.seeds) == 1
         seed = result.seeds[0]
         assert seed.content_item_id == "ci_attention"
-        assert seed.work_id == "https://openalex.org/W123"
+        assert seed.doi == "10.5555/3294995"
         assert seed.title == "Attention Is All You Need"
 
     def test_seed_carries_stored_influence_value(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit()],
-        }
+        openalex.search_papers.return_value = PaperPage(papers=[_openalex_hit()])
         resolver = _make_seed_resolver(openalex=openalex)
         result, _ = _run_seeds(
             resolver, ContentItemCollection(items=[_make_content_item()])
@@ -337,36 +317,37 @@ class TestSeedResolver:
     def test_title_mismatch_skips_seed_and_reports(self):
         """FR4: a seed failing the cross-check is skipped, not expanded."""
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit(display_name="A Different Work Entirely")],
-        }
+        openalex.search_papers.return_value = PaperPage(
+            papers=[
+                _openalex_hit(
+                    title="A Different Work Entirely",
+                    identity=PaperIdentity.from_values(doi="10.5555/wrong"),
+                )
+            ]
+        )
         resolver = _make_seed_resolver(openalex=openalex)
         result, monitoring = _run_seeds(
             resolver, ContentItemCollection(items=[_make_content_item()])
         )
         assert result.seeds == []
         assert "SEED SKIPPED" in monitoring
-        assert "openalex_title_mismatch" in monitoring
+        assert "provider_title_mismatch" in monitoring
 
     def test_no_work_found_skips_seed(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {"meta": {}, "results": []}
+        openalex.search_papers.return_value = PaperPage(papers=[])
         resolver = _make_seed_resolver(openalex=openalex)
         result, monitoring = _run_seeds(
             resolver,
             ContentItemCollection(items=[_make_content_item(name="Ghost Paper")]),
         )
         assert result.seeds == []
-        assert "no_work_found" in monitoring
+        assert "no_paper_found" in monitoring
 
     def test_seed_without_stored_influence_resolves_with_none(self):
         """A seed with no stored influence still resolves; floor handles it."""
         openalex = MagicMock()
-        openalex.search_works_by_title.return_value = {
-            "meta": {},
-            "results": [_openalex_hit()],
-        }
+        openalex.search_papers.return_value = PaperPage(papers=[_openalex_hit()])
         resolver = _make_seed_resolver(openalex=openalex)
         result, _ = _run_seeds(
             resolver,
@@ -386,9 +367,9 @@ class TestSeedResolver:
 
     def test_monitoring_leads_with_counts_and_skips(self):
         openalex = MagicMock()
-        openalex.search_works_by_title.side_effect = [
-            {"meta": {}, "results": [_openalex_hit()]},
-            {"meta": {}, "results": []},
+        openalex.search_papers.side_effect = [
+            PaperPage(papers=[_openalex_hit()]),
+            PaperPage(papers=[]),
         ]
         resolver = _make_seed_resolver(openalex=openalex)
         _, monitoring = _run_seeds(

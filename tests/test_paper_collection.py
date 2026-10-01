@@ -128,7 +128,7 @@ class TestPaperDiscoverer:
         assert isinstance(result, PaperCandidateCollection)
         assert len(result.papers) >= 1
 
-    def test_no_identifier_fields_on_output(self):
+    def test_canonical_identifier_fields_are_available_in_memory(self):
         handler = _make_monitoring_handler()
         discoverer = PaperDiscoverer(
             monitoring_handler=handler,
@@ -137,8 +137,8 @@ class TestPaperDiscoverer:
         )
         result = discoverer({}, "1")
         for paper in result.papers:
-            assert not hasattr(paper, "doi")
-            assert not hasattr(paper, "arxiv_id")
+            assert paper.arxiv_id is None
+            assert paper.doi is None
 
     def test_prompt_contains_attribute_description(self):
         handler = _make_monitoring_handler()
@@ -453,7 +453,6 @@ class TestContentItemDbWriter:
         paper = _candidate_as_resolved(_make_candidate())
         paper.doi = "https://doi.org/10.5555/3294995"
         paper.arxiv_id = "1706.03762"
-        paper.work_id = "https://openalex.org/W123"
         paper.influence_score = 90
         sp = ScoredPaper(
             paper=paper,
@@ -468,7 +467,6 @@ class TestContentItemDbWriter:
         assert item is not None
         assert "doi" not in item
         assert "arxiv_id" not in item
-        assert "work_id" not in item
 
 
 # --- JsonlWriter ---
@@ -501,7 +499,6 @@ class TestJsonlWriter:
             # FR2: no identifier fields in the persisted record
             assert "doi" not in rec
             assert "arxiv_id" not in rec
-            assert "work_id" not in rec
         finally:
             os.unlink(path)
 

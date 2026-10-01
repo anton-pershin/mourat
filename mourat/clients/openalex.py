@@ -7,11 +7,15 @@ OpenAlex silently returns page 1 with no error), and bounded retry with backoff
 on 429/5xx.
 """
 
+from datetime import date
 import logging
 import time
 from typing import Any
+from urllib.parse import quote
 
 import requests
+
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,17 @@ DEFAULT_SELECT_FIELDS = [
     "primary_location",
     "locations",
     "best_oa_location",
+    "referenced_works",
 ]
+
+
+def _abstract_from_inverted_index(inv: dict[str, list[int]] | None) -> str:
+    if not inv:
+        return ""
+    positions = [
+        (position, word) for word, indexes in inv.items() for position in indexes
+    ]
+    return " ".join(word for _, word in sorted(positions))
 
 
 class OpenAlexClient:
@@ -66,6 +80,7 @@ class OpenAlexClient:
         self.timeout_seconds = timeout_seconds
         self.per_page = per_page
         self.api_key = api_key
+        self._identity_to_work_id: dict[tuple[str | None, str | None], str] = {}
         self._session: requests.Session | None = None
         if http_client is None:
             self._session = requests.Session()
@@ -174,13 +189,126 @@ class OpenAlexClient:
         return list(references)
 
     def get_work_by_id(self, work_id: str) -> dict[str, Any]:
-        """Fetch a single work by its OpenAlex id (e.g. `W...`) or URL form.
-
-        OpenAlex records carry ids as `https://openalex.org/W...` — the
-        website, not the API. Requesting that host gets a 403, so the bare
-        id is always extracted and requested from the API base URL.
-        """
+        """Fetch a single work by its OpenAlex id or URL form."""
         bare_id = work_id.rsplit("/", 1)[-1]
         params: dict[str, Any] = {"select": ",".join(self.select_fields)}
         response = self._get(f"{OPENALEX_API_BASE_URL}/{bare_id}", params)
         return response.json()
+
+    @staticmethod
+    def _record(work: dict[str, Any]) -> PaperRecord:
+        doi = work.get("doi")
+        arxiv_id = None
+        for location in work.get("locations") or []:
+            landing = location.get("landing_page_url") or ""
+            if "arxiv.org/abs/" in landing:
+                arxiv_id = landing.rsplit("/", 1)[-1].split("v", 1)[0]
+                break
+        authors = [
+            entry.get("author", {}).get("display_name", "")
+            for entry in work.get("authorships", [])
+        ]
+        abstract = _abstract_from_inverted_index(work.get("abstract_inverted_index"))
+        return PaperRecord(
+            identity=PaperIdentity.from_values(arxiv_id=arxiv_id, doi=doi),
+            title=work.get("display_name") or work.get("title") or "",
+            authors=[name for name in authors if name],
+            publication_date=(
+                date.fromisoformat(work["publication_date"])
+                if work.get("publication_date")
+                else None
+            ),
+            citation_count=work.get("cited_by_count"),
+            raw_influence={
+                "fwci": work["fwci"]
+                for key in ["fwci"]
+                if isinstance(work.get(key), (int, float))
+            },
+        )
+
+    def _resolve_by_openalex_work(self, work: dict[str, Any]) -> PaperRecord:
+        record = self._record(work)
+        work_id = work.get("id")
+        if work_id:
+            key = (record.identity.arxiv_id, record.identity.doi)
+            self._identity_to_work_id[key] = work_id
+        return record
+
+    def _lookup_identity(self, identity: PaperIdentity) -> PaperRecord | None:
+        key = (identity.arxiv_id, identity.doi)
+        cached = self._identity_to_work_id.get(key)
+        if cached:
+            return self._resolve_by_openalex_work(self.get_work_by_id(cached))
+        lookup_doi = identity.doi or (
+            f"10.48550/arXiv.{identity.arxiv_id}" if identity.arxiv_id else None
+        )
+        if lookup_doi is None:
+            raise ValueError("paper identity must contain arxiv_id or doi")
+        try:
+            response = self._get(
+                OPENALEX_API_BASE_URL,
+                {
+                    "filter": f"doi:{lookup_doi}",
+                    "per-page": 1,
+                    "select": ",".join(self.select_fields),
+                },
+            )
+            envelope = response.json()
+            results = envelope.get("results") or []
+            if not results:
+                return None
+            work = results[0]
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                return None
+            raise
+        return self._resolve_by_openalex_work(work)
+
+    def resolve_by_arxiv_id(self, arxiv_id: str) -> PaperRecord | None:
+        return self._lookup_identity(PaperIdentity.from_values(arxiv_id=arxiv_id))
+
+    def resolve_by_doi(self, doi: str) -> PaperRecord | None:
+        return self._lookup_identity(PaperIdentity.from_values(doi=doi))
+
+    def search_papers(self, query: str, continuation: Any = None) -> PaperPage:
+        envelope = self.search_works_by_title(query, cursor=continuation or "*")
+        meta = envelope.get("meta") or {}
+        return PaperPage(
+            papers=[
+                self._resolve_by_openalex_work(work)
+                for work in envelope.get("results") or []
+            ],
+            continuation=meta.get("next_cursor"),
+        )
+
+    def get_citations(
+        self, identity: PaperIdentity, continuation: Any = None
+    ) -> PaperPage:
+        record = self._lookup_identity(identity)
+        if record is None:
+            return PaperPage()
+        work_id = self._identity_to_work_id[
+            (record.identity.arxiv_id, record.identity.doi)
+        ]
+        envelope = self.search_works_citing(work_id, cursor=continuation or "*")
+        meta = envelope.get("meta") or {}
+        return PaperPage(
+            papers=[
+                self._resolve_by_openalex_work(work)
+                for work in envelope.get("results") or []
+            ],
+            continuation=meta.get("next_cursor"),
+        )
+
+    def get_references(self, identity: PaperIdentity) -> list[PaperRecord]:
+        record = self._lookup_identity(identity)
+        if record is None:
+            return []
+        work_id = self._identity_to_work_id[
+            (record.identity.arxiv_id, record.identity.doi)
+        ]
+        references = self.get_work_references(work_id)
+        return [
+            self._resolve_by_openalex_work(self.get_work_by_id(ref))
+            for ref in references
+        ]

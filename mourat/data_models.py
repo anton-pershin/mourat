@@ -304,28 +304,19 @@ class ScoredRedditPostCollection(BaseModel):
 
 
 class PaperCandidate(BaseModel):
-    """A candidate paper discovered by the LLM agent, as a bibliographic description.
-
-    Carries no identifier fields by design: any DOI or arXiv id the agent
-    produces is discarded, not stored (spec decision 4.3).
-    """
+    """A candidate paper discovered by an agent or graph client."""
 
     title: str = Field(description="Title of the paper as discovered")
     authors: list[str] = Field(description="Authors of the paper, as found")
-    description: str = Field(
-        description="Short description of the paper drawn from the pages read"
-    )
+    description: str = Field(default="", description="Short description of the paper")
     urls_seen: list[str] = Field(
-        description="URLs encountered while discovering the paper, as-encountered"
+        default_factory=list, description="URLs encountered while discovering the paper"
     )
+    arxiv_id: str | None = None
+    doi: str | None = None
     provenance: list[str] = Field(
         default_factory=lambda: ["web_search"],
-        description=(
-            "Generator or agent names that produced this candidate. The "
-            "discovery agent leaves the default single web-search entry; "
-            "seed expansion records every generator that produced the "
-            "candidate (spec 11 §5.3)."
-        ),
+        description="Generator or agent names that produced this candidate",
     )
 
 
@@ -354,7 +345,6 @@ class ResolvedPaper(BaseModel):
     # -- in-flight only --
     doi: str | None = None
     arxiv_id: str | None = None
-    work_id: str | None = None
     influence_fwci: float | None = None
     influence_cited_by_count: int | None = None
     influence_score: int | None = None
@@ -394,15 +384,11 @@ class ContentItemCollection(BaseModel):
 
 
 class Seed(BaseModel):
-    """A stored content item identified as an expansion seed (spec 11 §5.3).
-
-    `work_id` is the metadata-API identifier assigned by `SeedResolver`
-    (in-flight only); `influence_value` is the seed's normalised influence
-    used for the floor derivation.
-    """
+    """A stored content item identified as an expansion seed."""
 
     content_item_id: str
-    work_id: str | None = None
+    arxiv_id: str | None = None
+    doi: str | None = None
     title: str
     influence_value: float | None = None
 
