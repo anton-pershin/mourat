@@ -6,7 +6,10 @@ import logging
 import random
 import time
 from datetime import date
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mourat.clients.paper_graph import PaperGraphClient
 from urllib.parse import quote
 
 import requests
@@ -22,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 FIELDS = "title,authors,abstract,publicationDate,citationCount,externalIds"
+S2_INFLUENCE_FIELDS = FIELDS
 
 
 class SemanticScholarClient:
@@ -110,6 +114,11 @@ class SemanticScholarClient:
                 date.fromisoformat(publication_date) if publication_date else None
             ),
             citation_count=payload.get("citationCount"),
+            raw_influence=(
+                {"citation_count": payload["citationCount"]}
+                if isinstance(payload.get("citationCount"), (int, float))
+                else {}
+            ),
         )
 
     def _resolve(self, key: str) -> PaperRecord | None:
@@ -183,6 +192,3 @@ class SemanticScholarClient:
                 break
             offset = next_offset
         return out if limit is None else out[:limit]
-
-
-_: type[PaperGraphClient] = SemanticScholarClient

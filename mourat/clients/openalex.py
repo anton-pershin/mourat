@@ -300,7 +300,9 @@ class OpenAlexClient:
             continuation=meta.get("next_cursor"),
         )
 
-    def get_references(self, identity: PaperIdentity) -> list[PaperRecord]:
+    def get_references(
+        self, identity: PaperIdentity, limit: int | None = None
+    ) -> list[PaperRecord]:
         record = self._lookup_identity(identity)
         if record is None:
             return []
@@ -308,7 +310,8 @@ class OpenAlexClient:
             (record.identity.arxiv_id, record.identity.doi)
         ]
         references = self.get_work_references(work_id)
-        return [
+        records = [
             self._resolve_by_openalex_work(self.get_work_by_id(ref))
             for ref in references
         ]
+        return records if limit is None else records[:limit]

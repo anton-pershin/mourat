@@ -38,6 +38,7 @@ def test_resolve_by_arxiv_id_returns_normalized_record():
     assert result is not None
     assert result.identity == PaperIdentity(arxiv_id="1706.03762")
     assert result.citation_count == 12
+    assert result.raw_influence == {"citation_count": 12}
     assert result.authors == ["Author"]
     assert http.get.call_args.kwargs["params"]["fields"]
 

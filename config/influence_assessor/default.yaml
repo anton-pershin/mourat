@@ -5,6 +5,7 @@ fwci_breakpoints:
   - [10.0, 50]
   - [100.0, 90]
 citations_per_year_breakpoints:
+  # Used by Semantic Scholar when only citationCount is available.
   - [1.0, 10]
   - [10.0, 50]
   - [100.0, 90]
