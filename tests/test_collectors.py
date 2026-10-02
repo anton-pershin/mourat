@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from mourat.collectors.arxiv import ArxivPaperCollector
 from mourat.collectors.seed_expander import SeedExpander
 from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from mourat.clients.openalex import OpenAlexClient
 from mourat.collectors.semantic_scholar import SemanticScholarPaperCollector
 from mourat.data_models import PaperInfoCollection, Seed, SeedCollection
 from mourat.monitoring import MonitoringHandler
@@ -215,6 +216,64 @@ def _make_expander(client=None, **kwargs) -> SeedExpander:
 
 
 class TestSeedExpander:
+    def test_openalex_client_exercises_real_reference_call_path(self):
+        """AC10: expansion must call OpenAlexClient.get_references, not a stub."""
+        seed_work = {
+            "id": "https://openalex.org/Wseed",
+            "display_name": "Attention Is All You Need",
+            "doi": "10.48550/arXiv.1706.03762",
+            "locations": [],
+            "referenced_works": ["https://openalex.org/Wref"],
+        }
+        reference_work = {
+            "id": "https://openalex.org/Wref",
+            "display_name": "Reference Paper",
+            "doi": "https://doi.org/10.1000/reference",
+            "locations": [],
+        }
+
+        class Response:
+            status_code = 200
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+            def raise_for_status(self):
+                raise AssertionError("unexpected HTTP error")
+
+        class HttpClient:
+            def get(self, url, params, timeout):
+                if url.endswith("/Wseed"):
+                    return Response(seed_work)
+                if url.endswith("/Wref"):
+                    return Response(reference_work)
+                if params.get("filter", "").startswith("doi:"):
+                    return Response({"results": [seed_work]})
+                if params.get("filter", "").startswith("cites:"):
+                    return Response({"meta": {"next_cursor": None}, "results": []})
+                if params.get("search"):
+                    return Response({"meta": {"next_cursor": None}, "results": []})
+                raise AssertionError((url, params))
+
+        client = OpenAlexClient(
+            user_agent="test",
+            http_client=HttpClient(),
+            regular_delay_seconds=0,
+        )
+        result = SeedExpander(
+            monitoring_handler=_make_monitoring_handler(),
+            paper_graph_client=client,
+            forward_budget=1,
+            search_budget=1,
+            backward_budget=1,
+        )(SeedCollection(seeds=[_make_seed()]), "2")
+
+        assert [paper.title for paper in result.papers] == ["Reference Paper"]
+        assert result.papers[0].provenance == ["backward_references"]
+
     def test_runs_all_generators_and_preserves_provenance(self):
         client = MagicMock()
         client.get_citations.return_value = PaperPage(
@@ -224,7 +283,8 @@ class TestSeedExpander:
             papers=[_record("10.1/search", "Search")]
         )
         client.get_references.return_value = [_record("10.1/backward", "Backward")]
-        result = _make_expander(client)(SeedCollection(seeds=[_make_seed()]), "2")
+        expander = _make_expander(client)
+        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
         assert {paper.title for paper in result.papers} == {
             "Forward",
             "Search",

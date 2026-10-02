@@ -6,6 +6,7 @@ ContentItemDbWriter, JsonlWriter, and the entry-point attribute loading.
 
 import json
 import os
+from datetime import date
 import sqlite3
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -26,7 +27,12 @@ from mourat.data_models import (
     ScoreEntry,
 )
 from mourat.filters import PaperScoreFilter
+from mourat.processors.arxiv_pdf_verifier import ArxivPdfVerifier
+from mourat.processors.influence_assessor import InfluenceAssessor
 from mourat.monitoring import MonitoringHandler
+from mourat.resolvers.paper_resolver import PaperResolver
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from mourat.clients.semantic_scholar import SemanticScholarClient
 from mourat.processors.content_item_scorer import (
     PaperContentItemScorer,
     _candidate_as_resolved,
@@ -264,6 +270,94 @@ class TestPaperContentItemScorer:
         assert result.papers[1].filtering_score == 20.0
         assert result.papers[0].paper.title == "Paper One"
         assert result.papers[1].paper.title == "Paper Two"
+
+
+class TestSemanticScholarSelectedPipeline:
+    """AC14: the selected-provider path reaches every downstream stage."""
+
+    def test_resolve_verify_assess_score_filter_write_without_network(self, tmp_path):
+        handler = _make_monitoring_handler()
+        graph = MagicMock(spec=SemanticScholarClient)
+        graph.resolve_by_arxiv_id.return_value = PaperRecord(
+            identity=PaperIdentity.from_values(arxiv_id="1706.03762"),
+            title="Attention Is All You Need",
+            authors=["Vaswani"],
+            abstract="Transformer architecture.",
+            publication_date=date(2017, 6, 12),
+            citation_count=100,
+            raw_influence={"fwci": 4.0},
+        )
+        candidate = PaperCandidateCollection(
+            papers=[
+                _make_candidate(
+                    provenance=["semantic_scholar"],
+                    arxiv_id="1706.03762",
+                )
+            ]
+        )
+        resolved = PaperResolver(handler, paper_graph_client=graph)(candidate, "1")
+        verified = ArxivPdfVerifier(
+            handler,
+            arxiv_client=MagicMock(
+                search_by_title=MagicMock(
+                    return_value=("1706.03762", "Attention Is All You Need")
+                )
+            ),
+            title_similarity_threshold=0.9,
+        )(resolved, "2")
+        assessed = InfluenceAssessor(
+            handler,
+            fwci_breakpoints=[(0, 0), (4, 80)],
+            citations_per_year_breakpoints=[(0, 0), (10, 100)],
+        )(verified, "3")
+        scored = PaperContentItemScorer(
+            handler,
+            model=_make_scoring_model(
+                [[{"id": "rq1", "type": "rq", "score": 90, "justification": "fit"}]]
+            ),
+            rq_list=RQ_LIST,
+        )(assessed, "4")
+        filtered = PaperScoreFilter(handler, score_threshold=50)(scored, "5")
+        output_path = tmp_path / "papers.jsonl"
+        written = JsonlWriter(handler, str(output_path))(filtered, "6")
+
+        assert len(written.papers) == 1
+        assert written.papers[0].paper.url.endswith("/pdf/1706.03762")
+        assert written.papers[0].paper.influence_measure_used == "fwci"
+        assert written.papers[0].paper.provenance == ["semantic_scholar"]
+        assert json.loads(output_path.read_text())["filtering_score"] == 90.0
+        assert [step for step, _ in handler.calls] == ["1", "2", "3", "4", "5", "6"]
+
+
+class TestPaperPipelineMonitoring:
+    """AC15: monitoring names provenance, empty graphs, and influence metric."""
+
+    def test_empty_graph_and_selected_metric_are_reported(self):
+        handler = _make_monitoring_handler()
+        graph = MagicMock(spec=SemanticScholarClient)
+        graph.resolve_by_arxiv_id.return_value = None
+        graph.search_papers.return_value = PaperPage()
+        result = PaperResolver(handler, paper_graph_client=graph)(
+            PaperCandidateCollection(
+                papers=[_make_candidate(provenance=["semantic_scholar"])]
+            ),
+            "resolve",
+        )
+        assert result.papers == []
+        assert "unresolved (dropped): 1" in handler.calls[-1][1]
+        assert "no_paper_found" in handler.calls[-1][1]
+
+        assessed_handler = _make_monitoring_handler()
+        assessed = InfluenceAssessor(
+            assessed_handler,
+            fwci_breakpoints=[(0, 0), (4, 80)],
+            citations_per_year_breakpoints=[(0, 0), (10, 100)],
+        )(
+            ResolvedPaperCollection(papers=[_resolved_paper(influence_fwci=4.0)]),
+            "influence",
+        )
+        assert assessed.papers[0].influence_measure_used == "fwci"
+        assert "Measures used: fwci=1" in assessed_handler.calls[-1][1]
 
 
 # --- PaperScoreFilter ---
