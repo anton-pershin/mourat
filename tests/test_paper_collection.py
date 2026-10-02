@@ -31,6 +31,7 @@ from mourat.processors.arxiv_pdf_verifier import ArxivPdfVerifier
 from mourat.processors.influence_assessor import InfluenceAssessor
 from mourat.monitoring import MonitoringHandler
 from mourat.resolvers.paper_resolver import PaperResolver
+from mourat.scripts.collect_influential_papers_from_seeds import _report_selected_client
 from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.clients.semantic_scholar import SemanticScholarClient
 from mourat.processors.content_item_scorer import (
@@ -358,6 +359,33 @@ class TestPaperPipelineMonitoring:
         )
         assert assessed.papers[0].influence_measure_used == "fwci"
         assert "Measures used: fwci=1" in assessed_handler.calls[-1][1]
+
+    def test_selected_provider_is_reported(self):
+        handler = _make_monitoring_handler()
+        _report_selected_client(handler, SemanticScholarClient())
+        assert handler.calls == [
+            ("provider", "Selected paper graph client: SemanticScholarClient")
+        ]
+
+    def test_resolver_monitoring_reports_candidate_provenance(self):
+        handler = _make_monitoring_handler()
+        graph = MagicMock(spec=SemanticScholarClient)
+        graph.resolve_by_arxiv_id.return_value = PaperRecord(
+            identity=PaperIdentity.from_values(arxiv_id="1706.03762"),
+            title="Attention Is All You Need",
+        )
+        PaperResolver(handler, paper_graph_client=graph)(
+            PaperCandidateCollection(
+                papers=[
+                    _make_candidate(
+                        arxiv_id="1706.03762",
+                        provenance=["forward_citations", "relevance_search"],
+                    )
+                ]
+            ),
+            "resolve",
+        )
+        assert "Provenance: forward_citations, relevance_search" in handler.calls[-1][1]
 
 
 # --- PaperScoreFilter ---

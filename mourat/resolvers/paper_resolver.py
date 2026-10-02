@@ -122,7 +122,9 @@ class PaperResolver(Function[PaperCandidateCollection, ResolvedPaperCollection])
             lines.append(f"### UNRESOLVED: {title}\nReason: {reason}\n")
         for item in resolved:
             lines.append(
-                f"### {item.title}\nIdentifiers: doi={item.doi or '-'} arxiv={item.arxiv_id or '-'}\n"
+                f"### {item.title}\n"
+                f"Identifiers: doi={item.doi or '-'} arxiv={item.arxiv_id or '-'}\n"
+                f"Provenance: {', '.join(item.provenance) or '-'}\n"
             )
         logger.debug(
             "resolved %d/%d candidates | %.2fs",

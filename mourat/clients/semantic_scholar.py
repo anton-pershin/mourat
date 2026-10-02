@@ -6,11 +6,11 @@ import logging
 import random
 import time
 from datetime import date
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     from mourat.clients.paper_graph import PaperGraphClient
-from urllib.parse import quote
 
 import requests
 
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 FIELDS = "title,authors,abstract,publicationDate,citationCount,externalIds"
-S2_INFLUENCE_FIELDS = FIELDS
 
 
 class SemanticScholarClient:
