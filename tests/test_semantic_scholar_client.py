@@ -93,6 +93,58 @@ def test_nested_endpoint_path_preserves_slash():
     assert http.get.call_args.args[0].endswith("/paper/ARXIV:1706.03762")
 
 
+def test_citations_can_scan_and_sort_by_count():
+    http = MagicMock()
+    http.get.side_effect = [
+        response({"paperId": "internal"}),
+        response(
+            {
+                "data": [
+                    {
+                        "citingPaper": {
+                            "title": "Recent",
+                            "citationCount": 2,
+                            "externalIds": {"DOI": "10.1/recent"},
+                        }
+                    },
+                    {
+                        "citingPaper": {
+                            "title": "Older",
+                            "citationCount": 20,
+                            "externalIds": {"DOI": "10.1/older"},
+                        }
+                    },
+                ],
+                "next": 2,
+            }
+        ),
+        response(
+            {
+                "data": [
+                    {
+                        "citingPaper": {
+                            "title": "Middle",
+                            "citationCount": 10,
+                            "externalIds": {"DOI": "10.1/middle"},
+                        }
+                    }
+                ],
+                "next": None,
+            }
+        ),
+    ]
+    client = SemanticScholarClient(
+        http_client=http,
+        regular_delay_seconds=0,
+        page_size=2,
+        citation_sort="citation_count",
+        citation_scan_budget=3,
+    )
+    page = client.get_citations(PaperIdentity(arxiv_id="1706.03762"))
+    assert [paper.title for paper in page.papers] == ["Older", "Middle", "Recent"]
+    assert page.continuation is None
+
+
 def test_get_references_paginates_to_requested_limit():
     http = MagicMock()
     http.get.side_effect = [

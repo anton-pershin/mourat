@@ -41,6 +41,8 @@ class SemanticScholarClient:
         regular_delay_seconds: float = 4.0,
         jitter_seconds: float = 1.0,
         page_size: int = 100,
+        citation_sort: str = "provider",
+        citation_scan_budget: int | None = None,
         http_client: Any | None = None,
     ) -> None:
         self.api_key = api_key
@@ -51,6 +53,12 @@ class SemanticScholarClient:
         self.regular_delay_seconds = regular_delay_seconds
         self.jitter_seconds = jitter_seconds
         self.page_size = page_size
+        if citation_sort not in {"provider", "citation_count"}:
+            raise ValueError("citation_sort must be 'provider' or 'citation_count'")
+        if citation_scan_budget is not None and citation_scan_budget < 1:
+            raise ValueError("citation_scan_budget must be positive when set")
+        self.citation_sort = citation_sort
+        self.citation_scan_budget = citation_scan_budget
         self._session = http_client or requests.Session()
         if hasattr(self._session, "headers"):
             self._session.headers.update({"User-Agent": "mourat/0.1"})
@@ -159,10 +167,34 @@ class SemanticScholarClient:
         if continuation is not None:
             params["offset"] = continuation
         payload = self._get(f"paper/{paper_id}/citations", params)
-        return PaperPage(
-            papers=[self._record(x["citingPaper"]) for x in payload.get("data") or []],
-            continuation=payload.get("next"),
-        )
+        papers = [
+            self._record(x["citingPaper"])
+            for x in payload.get("data") or []
+            if x.get("citingPaper")
+        ]
+        if self.citation_sort == "citation_count":
+            scan_budget = self.citation_scan_budget or self.page_size
+            papers = papers[:scan_budget]
+            next_offset = payload.get("next")
+            while len(papers) < scan_budget and next_offset is not None:
+                remaining = scan_budget - len(papers)
+                page_params = {
+                    "limit": min(self.page_size, remaining),
+                    "offset": next_offset,
+                }
+                page_payload = self._get(f"paper/{paper_id}/citations", page_params)
+                page = [
+                    self._record(x["citingPaper"])
+                    for x in page_payload.get("data") or []
+                    if x.get("citingPaper")
+                ]
+                if not page:
+                    break
+                papers.extend(page)
+                next_offset = page_payload.get("next")
+            papers.sort(key=lambda paper: paper.citation_count or 0, reverse=True)
+            return PaperPage(papers=papers, continuation=None)
+        return PaperPage(papers=papers, continuation=payload.get("next"))
 
     def get_references(
         self, identity: PaperIdentity, limit: int | None = None

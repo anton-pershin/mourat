@@ -1,5 +1,6 @@
 _target_: mourat.collectors.seed_expander.SeedExpander
 _partial_: true
-forward_budget: 20
+forward_budget: 100
 search_budget: 20
-backward_budget: 20
+backward_budget: 100
+
