@@ -67,7 +67,7 @@ def test_api_key_is_sent_as_header_and_doi_path_is_encoded():
     make_client(http).resolve_by_doi("10.1234/x/y")
     call = http.get.call_args
     assert call.kwargs["headers"]["x-api-key"] == "key"
-    assert "DOI:10.1234%2Fx%2Fy" in call.args[0]
+    assert "DOI:10.1234/x/y" in call.args[0]
 
 
 def test_retry_after_is_used_for_rate_limit(monkeypatch):
@@ -83,6 +83,14 @@ def test_retry_after_is_used_for_rate_limit(monkeypatch):
     monkeypatch.setattr("mourat.clients.semantic_scholar.random.uniform", lambda *_: 0)
     make_client(http)._resolve("ARXIV:1706.03762")
     assert sleeps == [7]
+
+
+def test_nested_endpoint_path_preserves_slash():
+    http = MagicMock()
+    http.get.return_value = response({"title": "Paper", "externalIds": {}})
+    client = make_client(http)
+    client.resolve_by_arxiv_id("1706.03762")
+    assert http.get.call_args.args[0].endswith("/paper/ARXIV:1706.03762")
 
 
 def test_get_references_paginates_to_requested_limit():

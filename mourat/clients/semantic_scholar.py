@@ -63,7 +63,7 @@ class SemanticScholarClient:
         headers = {"x-api-key": self.api_key} if self.api_key else {}
         for attempt in range(self.max_retries + 1):
             response = self._session.get(
-                f"{self.api_url}/{quote(path.lstrip('/'), safe=':')}",
+                f"{self.api_url}/{quote(path.lstrip('/'), safe='/:')}",
                 params=params,
                 headers=headers,
                 timeout=self.timeout_seconds,
