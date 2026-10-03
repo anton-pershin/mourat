@@ -180,6 +180,7 @@ class ContentItemScorer(
             constraints_contribute_to_filtering_score
         )
         self.scored_items: list[_ScoredNeutral] = []
+        self.scored_item_indices: list[int] = []
         self.valid_id_type_pairs = [
             (entity["id"], entity["type"])
             for entity in sum(
@@ -240,15 +241,26 @@ class ContentItemScorer(
         self, data: ContentItemScoringInputCollection
     ) -> tuple[ContentItemScoringInputCollection, str]:
         monitoring_lines = []
+        skipped_titles: list[str] = []
         self.scored_items = []
+        self.scored_item_indices = []
 
         total_items = len(data.items)
         for i, item in enumerate(data.items):
             t_item = time.monotonic()
-            relevance_scores, filtering_score = self._score_one(item)
+            try:
+                relevance_scores, filtering_score = self._score_one(item)
+            except Exception:
+                logger.exception(
+                    "skipping paper after scoring retries: '%s'",
+                    item.title,
+                )
+                skipped_titles.append(item.title)
+                continue
             self.scored_items.append(
                 _ScoredNeutral(item, relevance_scores, filtering_score)
             )
+            self.scored_item_indices.append(i)
 
             title_preview = to_title_preview(item.title)
             logger.debug(
@@ -272,6 +284,10 @@ class ContentItemScorer(
             items=[s.item for s in self.scored_items]
         )
         text_for_monitoring = "\n---\n".join(monitoring_lines)
+        if skipped_titles:
+            text_for_monitoring += "\n\n" + "\n".join(
+                f"SKIPPED: {title}" for title in skipped_titles
+            )
         return output, text_for_monitoring
 
 
@@ -329,12 +345,14 @@ class PostContentItemScorer(
 
         scored_posts = [
             ScoredRedditPost(
-                post=ep.post,
-                additional_context=ep.additional_context,
+                post=data.posts[index].post,
+                additional_context=data.posts[index].additional_context,
                 relevance_scores=scored.relevance_scores,
                 filtering_score=scored.filtering_score,
             )
-            for ep, scored in zip(data.posts, self.core.scored_items, strict=True)
+            for index, scored in zip(
+                self.core.scored_item_indices, self.core.scored_items, strict=True
+            )
         ]
         output = ScoredRedditPostCollection(posts=scored_posts)
         return output, text_for_monitoring
@@ -390,12 +408,12 @@ class PaperContentItemScorer(Function[ResolvedPaperCollection, ScoredPaperCollec
 
         scored_papers = [
             ScoredPaper(
-                paper=resolved_paper,
+                paper=data.papers[index],
                 relevance_scores=scored.relevance_scores,
                 filtering_score=scored.filtering_score,
             )
-            for resolved_paper, scored in zip(
-                data.papers, self.core.scored_items, strict=True
+            for index, scored in zip(
+                self.core.scored_item_indices, self.core.scored_items, strict=True
             )
         ]
         output = ScoredPaperCollection(papers=scored_papers)

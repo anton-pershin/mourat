@@ -223,7 +223,36 @@ class TestPaperContentItemScorer:
         assert len(result.papers) == 1
         assert scorer.core.agent.run_sync.call_count == 2
 
-    def test_maps_scores_onto_scored_papers(self):
+    def test_skips_paper_after_exhausting_model_retries(self):
+        handler = _make_monitoring_handler()
+        scorer = PaperContentItemScorer(
+            handler,
+            model=_make_scoring_model([[]]),
+            rq_list=RQ_LIST,
+            request_retries=1,
+            request_retry_delay_seconds=0,
+        )
+        scorer.core.agent.run_sync = MagicMock(
+            side_effect=[
+                ValueError("invalid JSON"),
+                ValueError("invalid JSON"),
+                ValueError("invalid JSON"),
+                ValueError("invalid JSON"),
+                MagicMock(output=type("Output", (), {"scores": []})()),
+            ]
+        )
+        result = scorer(
+            ResolvedPaperCollection(
+                papers=[
+                    _resolved_paper(title="Failed Paper"),
+                    _resolved_paper(title="Good Paper"),
+                ]
+            ),
+            "skip",
+        )
+        assert [paper.paper.title for paper in result.papers] == ["Good Paper"]
+        assert "SKIPPED: Failed Paper" in handler.calls[-1][1]
+
         handler = _make_monitoring_handler()
         model = _make_scoring_model(
             [[{"id": "rq1", "type": "rq", "score": 80, "justification": "core"}]]
