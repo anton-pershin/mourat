@@ -194,8 +194,18 @@ def _load_scoring_attributes(
     return rq_list, tc_list, topic_list, constraint_list
 
 
+def _report_selected_client(monitoring_handler: MonitoringHandler, client) -> str:
+    """Report and return the selected graph-client class name."""
+    provider_name = type(client).__name__
+    monitoring_handler("provider", f"Selected paper graph client: {provider_name}")
+    return provider_name
+
+
 def collect_influential_papers_from_seeds_main(cfg: DictConfig) -> None:
-    """Main pipeline: seeds -> expand -> resolve -> floor -> score -> write."""
+    """Main pipeline: seeds -> expand -> resolve -> floor -> score -> write.
+
+    Monitoring records the selected graph client before downstream stages run.
+    """
     db_path = cfg.get("db_path")
     if db_path is None:
         raise ValueError("db_path not set in config")
@@ -223,20 +233,23 @@ def collect_influential_papers_from_seeds_main(cfg: DictConfig) -> None:
             "Check the configured seed attribute ids and the log for details."
         )
 
+    paper_graph_client = hydra.utils.instantiate(cfg.paper_graph_client)
+    _report_selected_client(monitoring_handler, paper_graph_client)
     seed_resolver: SeedResolver = hydra.utils.instantiate(cfg.seed_resolver)(
-        monitoring_handler
+        monitoring_handler, paper_graph_client=paper_graph_client
     )
     step_id = "1"
     seeds = seed_resolver(seed_items, step_id=step_id)
 
     expander: SeedExpander = hydra.utils.instantiate(cfg.seed_expander)(
-        monitoring_handler
+        monitoring_handler, paper_graph_client=paper_graph_client
     )
     step_id = "2"
     candidates: PaperCandidateCollection = expander(seeds, step_id=step_id)
 
     resolver: PaperResolver = hydra.utils.instantiate(cfg.paper_resolver)(
-        monitoring_handler
+        monitoring_handler,
+        paper_graph_client=paper_graph_client,
     )
     step_id = "3"
     resolved: ResolvedPaperCollection = resolver(candidates, step_id=step_id)

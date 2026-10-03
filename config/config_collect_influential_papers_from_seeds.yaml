@@ -6,6 +6,7 @@ defaults:
   - llm/caila_glm_5_3_flash@scoring_llm
   - seed_resolver: default
   - seed_expander: default
+  - paper_graph_client: openalex
   - paper_resolver: default
   - influence_assessor: default
   - influence_floor_filter: default
