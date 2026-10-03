@@ -160,7 +160,11 @@ class ContentItemScorer(
         system_prompt: str = SYSTEM_PROMPT,
         model_settings: dict | None = None,
         retries: int | None = None,
+        request_retries: int = 2,
+        request_retry_delay_seconds: float = 2.0,
     ) -> None:
+        self.request_retries = request_retries
+        self.request_retry_delay_seconds = request_retry_delay_seconds
         self.agent = Agent(
             model,
             output_type=ScoringResult,
@@ -198,8 +202,27 @@ class ContentItemScorer(
             self.topic_list,
             self.constraint_list,
         )
-        run_result: AgentRunResult = self.agent.run_sync(prompt)
-        result: ScoringResult = run_result.output
+        last_error = None
+        for attempt in range(self.request_retries + 1):
+            try:
+                run_result: AgentRunResult = self.agent.run_sync(prompt)
+                result: ScoringResult = run_result.output
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt >= self.request_retries:
+                    raise
+                logger.warning(
+                    "scoring request failed for '%s'; retry %d/%d: %s",
+                    to_title_preview(item.title),
+                    attempt + 1,
+                    self.request_retries,
+                    exc,
+                )
+                time.sleep(self.request_retry_delay_seconds)
+        else:
+            raise RuntimeError("scoring retries exhausted") from last_error
+
         relevance_scores = [
             ScoreEntry.model_validate(e)
             for e in result.scores
@@ -269,6 +292,8 @@ class PostContentItemScorer(
         system_prompt: str = SYSTEM_PROMPT,
         model_settings: dict | None = None,
         retries: int | None = None,
+        request_retries: int = 2,
+        request_retry_delay_seconds: float = 2.0,
     ) -> None:
         self.core = ContentItemScorer(
             monitoring_handler,
@@ -330,6 +355,8 @@ class PaperContentItemScorer(Function[ResolvedPaperCollection, ScoredPaperCollec
         system_prompt: str = SYSTEM_PROMPT,
         model_settings: dict | None = None,
         retries: int | None = None,
+        request_retries: int = 2,
+        request_retry_delay_seconds: float = 2.0,
     ) -> None:
         self.core = ContentItemScorer(
             monitoring_handler,

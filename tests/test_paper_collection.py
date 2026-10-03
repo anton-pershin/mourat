@@ -202,6 +202,27 @@ class TestPaperDiscoverer:
 
 
 class TestPaperContentItemScorer:
+    def test_retries_transient_model_response_failure(self):
+        handler = _make_monitoring_handler()
+        scorer = PaperContentItemScorer(
+            handler,
+            model=_make_scoring_model([[]]),
+            rq_list=RQ_LIST,
+            request_retries=1,
+            request_retry_delay_seconds=0,
+        )
+        success = MagicMock()
+        success.output = type("Output", (), {"scores": []})()
+        scorer.core.agent.run_sync = MagicMock(
+            side_effect=[ValueError("invalid JSON"), success]
+        )
+        result = scorer(
+            ResolvedPaperCollection(papers=[_resolved_paper()]),
+            "retry",
+        )
+        assert len(result.papers) == 1
+        assert scorer.core.agent.run_sync.call_count == 2
+
     def test_maps_scores_onto_scored_papers(self):
         handler = _make_monitoring_handler()
         model = _make_scoring_model(

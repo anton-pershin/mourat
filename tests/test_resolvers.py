@@ -1,6 +1,6 @@
 """Unit tests for PaperResolver and SeedResolver with mocked API clients."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.data_models import (
@@ -235,6 +235,36 @@ class TestMonitoring:
         assert "in: 2" in first_line
         assert "resolved: 1" in first_line
         assert "unresolved" in first_line
+
+    def test_logs_each_candidate_progress(self):
+        handler = _make_handler()
+        client = MagicMock()
+        client.search_papers.return_value = PaperPage(papers=[_openalex_hit()])
+        resolver = PaperResolver(handler, paper_graph_client=client)
+        with patch("mourat.resolvers.paper_resolver.logger") as logger:
+            resolver(
+                PaperCandidateCollection(
+                    papers=[
+                        _make_candidate(urls_seen=["https://example.com/a"]),
+                        _make_candidate(
+                            title="Second Paper", urls_seen=["https://example.com/b"]
+                        ),
+                    ]
+                ),
+                "resolve",
+            )
+        assert logger.info.call_args_list[0].args == (
+            "resolving paper %d/%d: '%s'",
+            1,
+            2,
+            "Attention Is All You Need",
+        )
+        assert logger.info.call_args_list[1].args == (
+            "resolving paper %d/%d: '%s'",
+            2,
+            2,
+            "Second Paper",
+        )
 
     def test_every_candidate_failing_resolution_completes_and_reports(self):
         """FR5: all-fail run completes, reports counts and every claimed title."""

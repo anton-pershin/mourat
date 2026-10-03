@@ -110,7 +110,13 @@ class PaperResolver(Function[PaperCandidateCollection, ResolvedPaperCollection])
     def _run(self, data: PaperCandidateCollection):
         started = time.monotonic()
         resolved, dropped = [], []
-        for candidate in data.papers:
+        for index, candidate in enumerate(data.papers, start=1):
+            logger.info(
+                "resolving paper %d/%d: '%s'",
+                index,
+                len(data.papers),
+                candidate.title,
+            )
             item, reason = self._resolve_one(candidate)
             (resolved if item is not None else dropped).append(
                 item if item is not None else (candidate.title, reason)
