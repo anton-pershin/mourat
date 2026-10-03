@@ -112,3 +112,60 @@ def test_seed_expander_uses_all_three_normalized_generators():
     }
     client.get_citations.assert_called_once()
     client.get_references.assert_called_once()
+
+
+def test_semantic_scholar_expansion_with_openalex_resolution():
+    semantic_scholar = MagicMock(name="semantic_scholar_expansion")
+    semantic_scholar.get_citations.return_value = PaperPage(
+        papers=[rec(doi="10.1/discovered")]
+    )
+    semantic_scholar.search_papers.return_value = PaperPage(papers=[])
+    semantic_scholar.get_references.return_value = []
+    openalex = MagicMock(name="openalex_resolution")
+    openalex.search_papers.return_value = PaperPage(papers=[rec(arxiv_id="1706.03762")])
+    openalex.resolve_by_doi.return_value = rec(doi="10.1/discovered")
+
+    seeds = SeedResolver(Handler(), paper_graph_client=openalex)(
+        ContentItemCollection(items=[content_item()]), "1"
+    )
+    candidates = SeedExpander(
+        Handler(),
+        paper_graph_client=semantic_scholar,
+        forward_budget=1,
+        search_budget=0,
+        backward_budget=0,
+    )(seeds, "2")
+    resolved = PaperResolver(Handler(), paper_graph_client=openalex)(candidates, "3")
+
+    assert resolved.papers[0].doi == "10.1/discovered"
+    openalex.resolve_by_doi.assert_called_once_with("10.1/discovered")
+    semantic_scholar.resolve_by_doi.assert_not_called()
+    semantic_scholar.resolve_by_arxiv_id.assert_not_called()
+
+
+def test_default_and_expansion_clients_are_separate_boundaries():
+    expansion = MagicMock(name="semantic_scholar")
+    resolution = MagicMock(name="openalex")
+    expansion.get_citations.return_value = PaperPage(papers=[])
+    expansion.search_papers.return_value = PaperPage(papers=[])
+    expansion.get_references.return_value = []
+    resolution.search_papers.return_value = PaperPage(
+        papers=[rec(arxiv_id="1706.03762")]
+    )
+
+    seed_result = SeedResolver(Handler(), paper_graph_client=resolution)(
+        ContentItemCollection(items=[content_item()]), "1"
+    )
+    SeedExpander(
+        Handler(),
+        paper_graph_client=expansion,
+        forward_budget=1,
+        search_budget=1,
+        backward_budget=1,
+    )(SeedCollection(seeds=seed_result.seeds), "2")
+
+    assert seed_result.seeds
+    resolution.search_papers.assert_called_once()
+    expansion.search_papers.assert_called_once()
+    expansion.resolve_by_arxiv_id.assert_not_called()
+    expansion.resolve_by_doi.assert_not_called()
