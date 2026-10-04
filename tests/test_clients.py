@@ -380,6 +380,17 @@ class TestArxivDefaultSession:
             client._session.headers["User-Agent"] == "mourat-test/0.1 (mailto:t@e.com)"
         )
 
+    def test_default_session_configures_proxy(self):
+        client = ArxivClient(
+            user_agent="mourat-test/0.1 (mailto:t@e.com)",
+            proxy="socks5h://user:pass@example:1080",
+        )
+        assert client._session is not None
+        assert client._session.proxies == {
+            "http": "socks5h://user:pass@example:1080",
+            "https": "socks5h://user:pass@example:1080",
+        }
+
 
 class TestSearchByTitle:
     @staticmethod

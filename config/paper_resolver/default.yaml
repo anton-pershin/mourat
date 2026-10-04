@@ -5,3 +5,4 @@ arxiv_client:
   _target_: mourat.clients.arxiv.ArxivClient
   user_agent: ${metadata_api_user_agent}
   regular_delay_seconds: 3.0
+  proxy: ${oc.env:ARXIV_PROXY,null}
