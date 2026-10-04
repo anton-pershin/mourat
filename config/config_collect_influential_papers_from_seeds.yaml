@@ -9,7 +9,7 @@ defaults:
   - paper_graph_client: openalex
   # Graph clients are independently selectable.  Keep paper_graph_client as
   # a compatibility alias for callers that still provide one client.
-  - expansion_graph_client: openalex
+  - expansion_graph_client: semantic_scholar
   - resolution_graph_client: openalex
   - paper_resolver: default
   - influence_assessor: default
@@ -50,7 +50,7 @@ seed_content_item_ids:
   - paper_awq_activation_aware_weight_quantization_for_llm_compression_and_acceleration
 
 # Scoring threshold on the filtering score (0-100)
-score_threshold: 50
+score_threshold: 60
 
 # JSONL output path (used when jsonl_writer.enabled is true)
 jsonl_output_path: ${result_dir}/papers_from_seeds.jsonl
