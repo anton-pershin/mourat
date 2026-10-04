@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 from mourat.collectors.arxiv import ArxivPaperCollector
 from mourat.collectors.seed_expander import SeedExpander
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from mourat.clients.openalex import OpenAlexClient
 from mourat.collectors.semantic_scholar import SemanticScholarPaperCollector
 from mourat.data_models import PaperInfoCollection, Seed, SeedCollection
 from mourat.monitoring import MonitoringHandler
@@ -183,149 +185,151 @@ class TestSemanticScholarPaperCollector:
         assert result.papers[0].title == "Valid Paper"
 
 
-# --- SeedExpander (spec 11 task 4) ---
+# --- Provider-neutral SeedExpander ---
 
 
-def _make_seed(work_id="https://openalex.org/W123", **overrides) -> Seed:
-    defaults: dict = {
+def _make_seed(**overrides) -> Seed:
+    values = {
         "content_item_id": "ci1",
-        "work_id": work_id,
+        "arxiv_id": "1706.03762",
         "title": "Attention Is All You Need",
         "influence_value": 90.0,
     }
-    defaults.update(overrides)
-    return Seed(**defaults)
+    values.update(overrides)
+    return Seed(**values)
 
 
-def _make_expander(openalex=None, **kwargs) -> SeedExpander:
-    if openalex is None:
-        openalex = MagicMock()
-        # Safe defaults so paging loops terminate; individual tests override.
-        openalex.search_works_citing.return_value = {"meta": {}, "results": []}
-        openalex.search_works_by_title.return_value = {"meta": {}, "results": []}
-        openalex.get_work_references.return_value = []
+def _record(doi: str, title: str) -> PaperRecord:
+    return PaperRecord(
+        identity=PaperIdentity.from_values(doi=doi),
+        title=title,
+        authors=["A. Author"],
+    )
+
+
+def _make_expander(client=None, **kwargs) -> SeedExpander:
     return SeedExpander(
         monitoring_handler=_make_monitoring_handler(),
-        openalex_client=openalex,
+        paper_graph_client=client or MagicMock(),
         **kwargs,
     )
 
 
-def _work(work_id="https://openalex.org/W9", title="Citing Work", **overrides):
-    record = {
-        "id": work_id,
-        "display_name": title,
-        "authorships": [{"author": {"display_name": "A. Author"}}],
-    }
-    record.update(overrides)
-    return record
-
-
-def _envelope(results, next_cursor=None):
-    meta = {"next_cursor": next_cursor} if next_cursor else {}
-    return {"meta": meta, "results": results}
-
-
 class TestSeedExpander:
-    def test_forward_expansion_returns_citing_works(self):
-        openalex = MagicMock()
-        openalex.search_works_citing.return_value = _envelope(
-            [
-                _work(work_id="W10", title="Citer One"),
-                _work(work_id="W11", title="Citing Work"),
-            ]
-        )
-        expander = _make_expander(openalex)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert {p.title for p in result.papers} == {"Citer One", "Citing Work"}
-        assert result.papers[0].provenance == ["forward_citations"]
+    def test_openalex_client_exercises_real_reference_call_path(self):
+        """AC10: expansion must call OpenAlexClient.get_references, not a stub."""
+        seed_work = {
+            "id": "https://openalex.org/Wseed",
+            "display_name": "Attention Is All You Need",
+            "doi": "10.48550/arXiv.1706.03762",
+            "locations": [],
+            "referenced_works": ["https://openalex.org/Wref"],
+        }
+        reference_work = {
+            "id": "https://openalex.org/Wref",
+            "display_name": "Reference Paper",
+            "doi": "https://doi.org/10.1000/reference",
+            "locations": [],
+        }
 
-    def test_search_returns_paged_results_from_seed_title(self):
-        openalex = MagicMock()
-        openalex.search_works_by_title.return_value = _envelope(
-            [_work(work_id="W20", title="Searched Work")]
-        )
-        expander = _make_expander(openalex)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert [p.title for p in result.papers] == ["Searched Work"]
-        assert result.papers[0].provenance == ["relevance_search"]
-        openalex.search_works_by_title.assert_called_once_with(
-            "Attention Is All You Need", cursor="*"
-        )
+        class Response:
+            status_code = 200
 
-    def test_backward_expansion_returns_cited_works(self):
-        openalex = MagicMock()
-        openalex.get_work_references.return_value = ["W30", "W31"]
-        openalex.get_work_by_id.side_effect = [
-            _work(work_id="W30", title="Referenced One"),
-            _work(work_id="W31", title="Referenced Two"),
-        ]
-        expander = _make_expander(openalex)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        titles = {p.title for p in result.papers}
-        assert titles == {"Referenced One", "Referenced Two"}
-        assert all(p.provenance == ["backward_references"] for p in result.papers)
+            def __init__(self, payload):
+                self.payload = payload
 
-    def test_backward_expansion_empty_references_is_no_error(self):
-        """FR2: preprint-only records have no reference list; not an error."""
-        openalex = MagicMock()
-        openalex.get_work_references.return_value = []
-        expander = _make_expander(openalex)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert result.papers == []
+            def json(self):
+                return self.payload
 
-    def test_merge_dedups_by_work_id_with_full_provenance(self):
-        """A work from several generators appears once, naming all of them."""
-        openalex = MagicMock()
-        openalex.search_works_citing.return_value = _envelope(
-            [_work(work_id="W9", title="Shared Work")]
+            def raise_for_status(self):
+                raise AssertionError("unexpected HTTP error")
+
+        class HttpClient:
+            def get(self, url, params, timeout):
+                if url.endswith("/Wseed"):
+                    return Response(seed_work)
+                if url.endswith("/Wref"):
+                    return Response(reference_work)
+                if params.get("filter", "").startswith("doi:"):
+                    return Response({"results": [seed_work]})
+                if params.get("filter", "").startswith("cites:"):
+                    return Response({"meta": {"next_cursor": None}, "results": []})
+                if params.get("search"):
+                    return Response({"meta": {"next_cursor": None}, "results": []})
+                raise AssertionError((url, params))
+
+        client = OpenAlexClient(
+            user_agent="test",
+            http_client=HttpClient(),
+            regular_delay_seconds=0,
         )
-        openalex.search_works_by_title.return_value = _envelope(
-            [_work(work_id="W9", title="Shared Work")]
+        result = SeedExpander(
+            monitoring_handler=_make_monitoring_handler(),
+            paper_graph_client=client,
+            forward_budget=1,
+            search_budget=1,
+            backward_budget=1,
+        )(SeedCollection(seeds=[_make_seed()]), "2")
+
+        assert [paper.title for paper in result.papers] == ["Reference Paper"]
+        assert result.papers[0].provenance == ["backward_references"]
+
+    def test_runs_all_generators_and_preserves_provenance(self):
+        client = MagicMock()
+        client.get_citations.return_value = PaperPage(
+            papers=[_record("10.1/forward", "Forward")]
         )
-        openalex.get_work_references.return_value = []
-        expander = _make_expander(openalex)
+        client.search_papers.return_value = PaperPage(
+            papers=[_record("10.1/search", "Search")]
+        )
+        client.get_references.return_value = [_record("10.1/backward", "Backward")]
+        expander = _make_expander(client)
         result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert len(result.papers) == 1
-        assert result.papers[0].provenance == [
+        assert {paper.title for paper in result.papers} == {
+            "Forward",
+            "Search",
+            "Backward",
+        }
+        assert {paper.provenance[0] for paper in result.papers} == {
             "forward_citations",
             "relevance_search",
+            "backward_references",
+        }
+
+    def test_deduplicates_by_canonical_identity(self):
+        client = MagicMock()
+        shared = _record("10.1/shared", "Shared")
+        client.get_citations.return_value = PaperPage(papers=[shared])
+        client.search_papers.return_value = PaperPage(papers=[shared])
+        client.get_references.return_value = []
+        result = _make_expander(client)(SeedCollection(seeds=[_make_seed()]), "2")
+        assert len(result.papers) == 1
+        assert result.papers[0].provenance == ["forward_citations", "relevance_search"]
+
+    def test_budgets_bound_each_generator(self):
+        client = MagicMock()
+        client.get_citations.side_effect = lambda identity, continuation: PaperPage(
+            papers=[_record(f"10.1/f{continuation or 0}", "Forward")],
+            continuation=(continuation or 0) + 1,
+        )
+        client.search_papers.side_effect = lambda query, continuation: PaperPage(
+            papers=[_record(f"10.1/s{continuation or 0}", "Search")],
+            continuation=(continuation or 0) + 1,
+        )
+        client.get_references.return_value = [
+            _record(f"10.1/b{i}", "Backward") for i in range(20)
         ]
-
-    def test_forward_budget_bounds_citing_query_paging(self):
-        openalex = MagicMock()
-        # API offers endless pages with a fresh cursor each time
-        counter = itertools.count()
-        openalex.search_works_citing.side_effect = lambda work_id, cursor: _envelope(
-            [_work(work_id=f"Wf{next(counter)}")], next_cursor=f"c{next(counter)}"
+        result = _make_expander(
+            client, forward_budget=3, search_budget=4, backward_budget=5
+        )(SeedCollection(seeds=[_make_seed()]), "2")
+        assert (
+            len([p for p in result.papers if p.provenance == ["forward_citations"]])
+            == 3
         )
-        expander = _make_expander(openalex, forward_budget=3)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert len(result.papers) == 3
-
-    def test_search_budget_bounds_paging(self):
-        openalex = MagicMock()
-        counter = itertools.count()
-        openalex.search_works_by_title.side_effect = lambda title, cursor: _envelope(
-            [_work(work_id=f"Ws{next(counter)}")], next_cursor=f"c{next(counter)}"
+        assert (
+            len([p for p in result.papers if p.provenance == ["relevance_search"]]) == 4
         )
-        expander = _make_expander(openalex, search_budget=5)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert len(result.papers) == 5
-
-    def test_backward_budget_bounds_reference_fetches(self):
-        openalex = MagicMock()
-        openalex.get_work_references.return_value = [f"Wb{i}" for i in range(50)]
-        openalex.get_work_by_id.side_effect = lambda wid: _work(work_id=wid)
-        expander = _make_expander(openalex, backward_budget=7)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert len(result.papers) == 7
-
-    def test_records_without_identity_are_skipped(self):
-        openalex = MagicMock()
-        openalex.search_works_citing.return_value = _envelope(
-            [{"display_name": "No Id Here"}, {"id": "", "display_name": "Empty Id"}]
+        assert (
+            len([p for p in result.papers if p.provenance == ["backward_references"]])
+            == 5
         )
-        expander = _make_expander(openalex)
-        result = expander(SeedCollection(seeds=[_make_seed()]), "2")
-        assert result.papers == []

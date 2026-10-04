@@ -249,7 +249,7 @@ class InfluenceFloorFilter(Function[ResolvedPaperCollection, ResolvedPaperCollec
         self,
         monitoring_handler: MonitoringHandler,
         seed_influences: list[float],
-        percentile: float = 10.0,
+        percentile: float | None = 10.0,
     ) -> None:
         self.seed_influences = [float(v) for v in seed_influences]
         self.percentile = percentile
@@ -259,6 +259,10 @@ class InfluenceFloorFilter(Function[ResolvedPaperCollection, ResolvedPaperCollec
         """The percentile of the seed influence values, or None with no seeds."""
         if not self.seed_influences:
             return None
+
+        if self.percentile is None:
+            return None
+
         values = sorted(self.seed_influences)
         # linear interpolation between closest ranks (numpy's default method)
         pos = (len(values) - 1) * (self.percentile / 100.0)
@@ -288,8 +292,8 @@ class InfluenceFloorFilter(Function[ResolvedPaperCollection, ResolvedPaperCollec
         total = len(data.papers)
         lines = [
             f"Papers in: {total}, kept: {len(kept)}, dropped: {len(dropped)} "
-            f"(floor {floor if floor is not None else 'n/a'} "
-            f"= p{self.percentile:g} of {len(self.seed_influences)} seeds)"
+            f"(influence floor = {floor if floor is not None else 'n/a'} "
+            f"computed from {len(self.seed_influences)} seeds)"
         ]
         for item, reason in dropped:
             score_text = (

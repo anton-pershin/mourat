@@ -35,6 +35,7 @@ class ArxivClient:
         max_retries: int = 8,
         backoff_seconds: float = 2.0,
         regular_delay_seconds: float = 3.0,
+        proxy: str | None = None,
         http_client: Any | None = None,
     ) -> None:
         self.user_agent = user_agent
@@ -42,10 +43,13 @@ class ArxivClient:
         self.max_retries = max_retries
         self.backoff_seconds = backoff_seconds
         self.regular_delay_seconds = regular_delay_seconds
+        self.proxy = proxy
         self._session: requests.Session | None = None
         if http_client is None:
             self._session = requests.Session()
             self._session.headers.update({"User-Agent": self.user_agent})
+            if self.proxy:
+                self._session.proxies.update({"http": self.proxy, "https": self.proxy})
         else:
             self._http_client = http_client
 

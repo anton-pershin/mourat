@@ -7,3 +7,4 @@ arxiv_client:
   timeout_seconds: 120.0
   max_retries: 8
   regular_delay_seconds: 3.0  # arXiv politeness: ~1 request per 3s
+  proxy: ${oc.env:ARXIV_PROXY,null}

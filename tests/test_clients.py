@@ -8,6 +8,7 @@ import requests
 
 from mourat.clients.arxiv import ArxivClient
 from mourat.clients.openalex import DEFAULT_SELECT_FIELDS, OpenAlexClient
+from mourat.clients.paper_graph import PaperIdentity, normalize_arxiv_id, normalize_doi
 
 
 def _make_client(http_client: MagicMock, **kwargs) -> OpenAlexClient:
@@ -243,7 +244,67 @@ class TestDefaultSession:
         )
 
 
-# -- ArxivClient --
+class TestOpenAlexNormalizedClient:
+    def test_arxiv_resolution_uses_arxiv_doi_and_caches_work_id(self):
+        http_client = MagicMock()
+        http_client.get.return_value = _json_response(
+            {
+                "meta": {},
+                "results": [
+                    {
+                        "id": "https://openalex.org/W1",
+                        "doi": "https://doi.org/10.48550/arXiv.1706.03762",
+                        "display_name": "A paper",
+                        "publication_date": "2017-06-02",
+                        "locations": [],
+                        "authorships": [],
+                        "fwci": 2.5,
+                        "cited_by_count": 12,
+                    }
+                ],
+            }
+        )
+        result = _make_client(http_client).resolve_by_arxiv_id("1706.03762")
+        assert result.identity.arxiv_id == "1706.03762"
+        assert result.identity.doi is None
+        assert result.raw_influence == {"fwci": 2.5}
+        assert (
+            http_client.get.call_args.kwargs["params"]["filter"]
+            == "doi:10.48550/arXiv.1706.03762"
+        )
+
+    def test_citations_use_cached_internal_work_id(self):
+        http_client = MagicMock()
+        http_client.get.side_effect = [
+            _json_response(
+                {
+                    "meta": {},
+                    "results": [
+                        {
+                            "id": "https://openalex.org/W1",
+                            "doi": "https://doi.org/10.48550/arXiv.1706.03762",
+                            "display_name": "A paper",
+                            "locations": [],
+                            "authorships": [],
+                        }
+                    ],
+                }
+            ),
+            _json_response({"results": [], "meta": {}}),
+        ]
+        client = _make_client(http_client)
+        page = client.get_citations(PaperIdentity(arxiv_id="1706.03762"))
+        assert page.papers == []
+        assert "cites:W1" == http_client.get.call_args.kwargs["params"]["filter"]
+
+    def test_arxiv_doi_is_canonicalized_to_arxiv_id(self):
+        identity = PaperIdentity.from_values(doi="10.48550/arXiv.1706.03762")
+        assert identity.arxiv_id == "1706.03762"
+        assert identity.doi is None
+
+    def test_arxiv_forms_are_normalized(self):
+        assert normalize_arxiv_id("arXiv:1706.03762v2") == "1706.03762"
+        assert normalize_doi("https://doi.org/10.1234/ABC") == "10.1234/ABC"
 
 
 SAMPLE_ARXIV_ENTRY_XML = (
@@ -318,6 +379,17 @@ class TestArxivDefaultSession:
         assert (
             client._session.headers["User-Agent"] == "mourat-test/0.1 (mailto:t@e.com)"
         )
+
+    def test_default_session_configures_proxy(self):
+        client = ArxivClient(
+            user_agent="mourat-test/0.1 (mailto:t@e.com)",
+            proxy="socks5h://user:pass@example:1080",
+        )
+        assert client._session is not None
+        assert client._session.proxies == {
+            "http": "socks5h://user:pass@example:1080",
+            "https": "socks5h://user:pass@example:1080",
+        }
 
 
 class TestSearchByTitle:

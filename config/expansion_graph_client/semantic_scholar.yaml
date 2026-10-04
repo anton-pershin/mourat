@@ -1,0 +1,6 @@
+_target_: mourat.clients.semantic_scholar.SemanticScholarClient
+api_key: ${oc.env:SEMANTIC_SCHOLAR_API_KEY,null}
+proxy: ${oc.env:SEMANTIC_SCHOLAR_PROXY,null}
+max_retries: 8
+citation_sort: citation_count
+citation_scan_budget: 2000  # max citations scanned when citation_sort=citation_count

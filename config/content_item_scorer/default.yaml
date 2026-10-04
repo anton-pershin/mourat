@@ -12,6 +12,7 @@ system_prompt: |
   - Provide a brief justification for the score.
 
   Be strict with scoring — most items will score below 50.
+  Do not score review/survey items high — their score should be below 50.
   Return only scores for items that are actually relevant to the item (score > 0).
 model_settings:
   timeout: 300

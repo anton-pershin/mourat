@@ -6,6 +6,7 @@ ContentItemDbWriter, JsonlWriter, and the entry-point attribute loading.
 
 import json
 import os
+from datetime import date
 import sqlite3
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -26,7 +27,13 @@ from mourat.data_models import (
     ScoreEntry,
 )
 from mourat.filters import PaperScoreFilter
+from mourat.processors.arxiv_pdf_verifier import ArxivPdfVerifier
+from mourat.processors.influence_assessor import InfluenceAssessor
 from mourat.monitoring import MonitoringHandler
+from mourat.resolvers.paper_resolver import PaperResolver
+from mourat.scripts.collect_influential_papers_from_seeds import _report_selected_client
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from mourat.clients.semantic_scholar import SemanticScholarClient
 from mourat.processors.content_item_scorer import (
     PaperContentItemScorer,
     _candidate_as_resolved,
@@ -128,7 +135,7 @@ class TestPaperDiscoverer:
         assert isinstance(result, PaperCandidateCollection)
         assert len(result.papers) >= 1
 
-    def test_no_identifier_fields_on_output(self):
+    def test_canonical_identifier_fields_are_available_in_memory(self):
         handler = _make_monitoring_handler()
         discoverer = PaperDiscoverer(
             monitoring_handler=handler,
@@ -137,8 +144,8 @@ class TestPaperDiscoverer:
         )
         result = discoverer({}, "1")
         for paper in result.papers:
-            assert not hasattr(paper, "doi")
-            assert not hasattr(paper, "arxiv_id")
+            assert paper.arxiv_id is None
+            assert paper.doi is None
 
     def test_prompt_contains_attribute_description(self):
         handler = _make_monitoring_handler()
@@ -195,7 +202,57 @@ class TestPaperDiscoverer:
 
 
 class TestPaperContentItemScorer:
-    def test_maps_scores_onto_scored_papers(self):
+    def test_retries_transient_model_response_failure(self):
+        handler = _make_monitoring_handler()
+        scorer = PaperContentItemScorer(
+            handler,
+            model=_make_scoring_model([[]]),
+            rq_list=RQ_LIST,
+            request_retries=1,
+            request_retry_delay_seconds=0,
+        )
+        success = MagicMock()
+        success.output = type("Output", (), {"scores": []})()
+        scorer.core.agent.run_sync = MagicMock(
+            side_effect=[ValueError("invalid JSON"), success]
+        )
+        result = scorer(
+            ResolvedPaperCollection(papers=[_resolved_paper()]),
+            "retry",
+        )
+        assert len(result.papers) == 1
+        assert scorer.core.agent.run_sync.call_count == 2
+
+    def test_skips_paper_after_exhausting_model_retries(self):
+        handler = _make_monitoring_handler()
+        scorer = PaperContentItemScorer(
+            handler,
+            model=_make_scoring_model([[]]),
+            rq_list=RQ_LIST,
+            request_retries=1,
+            request_retry_delay_seconds=0,
+        )
+        scorer.core.agent.run_sync = MagicMock(
+            side_effect=[
+                ValueError("invalid JSON"),
+                ValueError("invalid JSON"),
+                ValueError("invalid JSON"),
+                ValueError("invalid JSON"),
+                MagicMock(output=type("Output", (), {"scores": []})()),
+            ]
+        )
+        result = scorer(
+            ResolvedPaperCollection(
+                papers=[
+                    _resolved_paper(title="Failed Paper"),
+                    _resolved_paper(title="Good Paper"),
+                ]
+            ),
+            "skip",
+        )
+        assert [paper.paper.title for paper in result.papers] == ["Good Paper"]
+        assert "SKIPPED: Failed Paper" in handler.calls[-1][1]
+
         handler = _make_monitoring_handler()
         model = _make_scoring_model(
             [[{"id": "rq1", "type": "rq", "score": 80, "justification": "core"}]]
@@ -264,6 +321,121 @@ class TestPaperContentItemScorer:
         assert result.papers[1].filtering_score == 20.0
         assert result.papers[0].paper.title == "Paper One"
         assert result.papers[1].paper.title == "Paper Two"
+
+
+class TestSemanticScholarSelectedPipeline:
+    """AC14: the selected-provider path reaches every downstream stage."""
+
+    def test_resolve_verify_assess_score_filter_write_without_network(self, tmp_path):
+        handler = _make_monitoring_handler()
+        graph = MagicMock(spec=SemanticScholarClient)
+        graph.resolve_by_arxiv_id.return_value = PaperRecord(
+            identity=PaperIdentity.from_values(arxiv_id="1706.03762"),
+            title="Attention Is All You Need",
+            authors=["Vaswani"],
+            abstract="Transformer architecture.",
+            publication_date=date(2017, 6, 12),
+            citation_count=100,
+            raw_influence={"fwci": 4.0},
+        )
+        candidate = PaperCandidateCollection(
+            papers=[
+                _make_candidate(
+                    provenance=["semantic_scholar"],
+                    arxiv_id="1706.03762",
+                )
+            ]
+        )
+        resolved = PaperResolver(handler, paper_graph_client=graph)(candidate, "1")
+        verified = ArxivPdfVerifier(
+            handler,
+            arxiv_client=MagicMock(
+                search_by_title=MagicMock(
+                    return_value=("1706.03762", "Attention Is All You Need")
+                )
+            ),
+            title_similarity_threshold=0.9,
+        )(resolved, "2")
+        assessed = InfluenceAssessor(
+            handler,
+            fwci_breakpoints=[(0, 0), (4, 80)],
+            citations_per_year_breakpoints=[(0, 0), (10, 100)],
+        )(verified, "3")
+        scored = PaperContentItemScorer(
+            handler,
+            model=_make_scoring_model(
+                [[{"id": "rq1", "type": "rq", "score": 90, "justification": "fit"}]]
+            ),
+            rq_list=RQ_LIST,
+        )(assessed, "4")
+        filtered = PaperScoreFilter(handler, score_threshold=50)(scored, "5")
+        output_path = tmp_path / "papers.jsonl"
+        written = JsonlWriter(handler, str(output_path))(filtered, "6")
+
+        assert len(written.papers) == 1
+        assert written.papers[0].paper.url.endswith("/pdf/1706.03762")
+        assert written.papers[0].paper.influence_measure_used == "fwci"
+        assert written.papers[0].paper.provenance == ["semantic_scholar"]
+        assert json.loads(output_path.read_text())["filtering_score"] == 90.0
+        assert [step for step, _ in handler.calls] == ["1", "2", "3", "4", "5", "6"]
+
+
+class TestPaperPipelineMonitoring:
+    """AC15: monitoring names provenance, empty graphs, and influence metric."""
+
+    def test_empty_graph_and_selected_metric_are_reported(self):
+        handler = _make_monitoring_handler()
+        graph = MagicMock(spec=SemanticScholarClient)
+        graph.resolve_by_arxiv_id.return_value = None
+        graph.search_papers.return_value = PaperPage()
+        result = PaperResolver(handler, paper_graph_client=graph)(
+            PaperCandidateCollection(
+                papers=[_make_candidate(provenance=["semantic_scholar"])]
+            ),
+            "resolve",
+        )
+        assert result.papers == []
+        assert "unresolved (dropped): 1" in handler.calls[-1][1]
+        assert "no_paper_found" in handler.calls[-1][1]
+
+        assessed_handler = _make_monitoring_handler()
+        assessed = InfluenceAssessor(
+            assessed_handler,
+            fwci_breakpoints=[(0, 0), (4, 80)],
+            citations_per_year_breakpoints=[(0, 0), (10, 100)],
+        )(
+            ResolvedPaperCollection(papers=[_resolved_paper(influence_fwci=4.0)]),
+            "influence",
+        )
+        assert assessed.papers[0].influence_measure_used == "fwci"
+        assert "Measures used: fwci=1" in assessed_handler.calls[-1][1]
+
+    def test_selected_provider_is_reported(self):
+        handler = _make_monitoring_handler()
+        _report_selected_client(handler, SemanticScholarClient())
+        assert handler.calls == [
+            ("provider", "Selected paper graph client: SemanticScholarClient")
+        ]
+
+    def test_resolver_monitoring_reports_candidate_provenance(self):
+        handler = _make_monitoring_handler()
+        graph = MagicMock(spec=SemanticScholarClient)
+        graph.resolve_by_arxiv_id.return_value = PaperRecord(
+            identity=PaperIdentity.from_values(arxiv_id="1706.03762"),
+            title="Attention Is All You Need",
+        )
+        PaperResolver(handler, paper_graph_client=graph)(
+            PaperCandidateCollection(
+                papers=[
+                    _make_candidate(
+                        arxiv_id="1706.03762",
+                        provenance=["forward_citations", "relevance_search"],
+                    )
+                ]
+            ),
+            "resolve",
+        )
+        assert "Provenance: forward_citations, relevance_search" in handler.calls[-1][1]
 
 
 # --- PaperScoreFilter ---
@@ -453,7 +625,6 @@ class TestContentItemDbWriter:
         paper = _candidate_as_resolved(_make_candidate())
         paper.doi = "https://doi.org/10.5555/3294995"
         paper.arxiv_id = "1706.03762"
-        paper.work_id = "https://openalex.org/W123"
         paper.influence_score = 90
         sp = ScoredPaper(
             paper=paper,
@@ -468,7 +639,6 @@ class TestContentItemDbWriter:
         assert item is not None
         assert "doi" not in item
         assert "arxiv_id" not in item
-        assert "work_id" not in item
 
 
 # --- JsonlWriter ---
@@ -501,7 +671,6 @@ class TestJsonlWriter:
             # FR2: no identifier fields in the persisted record
             assert "doi" not in rec
             assert "arxiv_id" not in rec
-            assert "work_id" not in rec
         finally:
             os.unlink(path)
 

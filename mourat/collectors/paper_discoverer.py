@@ -134,6 +134,11 @@ class PaperDiscoverer(Function[Any, PaperCandidateCollection]):
         )
 
         result: PaperCandidateCollection = run_result.output
+        # Discovery is not an identifier authority. Canonical identifiers are
+        # accepted only from graph-client records or later deterministic lookup.
+        for paper in result.papers:
+            paper.arxiv_id = None
+            paper.doi = None
 
         lines = [f"Discovered {len(result.papers)} papers in {run_s:.1f}s"]
         for p in result.papers:

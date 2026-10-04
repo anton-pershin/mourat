@@ -1,62 +1,90 @@
-"""SeedResolver: stored content items -> seeds with metadata work ids.
+"""Resolve stored content items into canonical paper-graph seeds."""
 
-Per spec 11 §4.1: seeds carry no stored identifier, so each is re-resolved at
-the start of a run — title lookup via `OpenAlexClient` with the same title
-cross-check `PaperResolver` applies. A seed that fails the cross-check (or the
-lookup) is reported and skipped: it neither expands nor contributes to the
-floor derivation (FR4), so the failure is visible rather than silent.
-
-The resolved seeds' influence distribution (the stored `influence_score`
-values, normalised 0-100 by the same convention the DB writer uses) is
-exposed for `InfluenceFloorFilter`'s percentile derivation.
-"""
+from __future__ import annotations
 
 import logging
-import time
+from datetime import date
+from typing import Any
 
 from mourat.base import Function
-from mourat.clients.openalex import OpenAlexClient
-from mourat.data_models import (
-    ContentItemCollection,
-    Seed,
-    SeedCollection,
-)
+from mourat.clients.paper_graph import PaperGraphClient, PaperIdentity, PaperRecord
+from mourat.data_models import ContentItemCollection, Seed, SeedCollection
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.similarity import titles_match
 
 logger = logging.getLogger(__name__)
 
 
+def _legacy_record(work: dict[str, Any]) -> PaperRecord:
+    doi = work.get("doi")
+    arxiv_id = None
+    for location in work.get("locations") or []:
+        landing = location.get("landing_page_url") or ""
+        if "arxiv.org/abs/" in landing:
+            arxiv_id = landing.rsplit("/", 1)[-1].split("v", 1)[0]
+            break
+    authors = [
+        entry.get("author", {}).get("display_name", "")
+        for entry in work.get("authorships", [])
+    ]
+    abstract = ""
+    index = work.get("abstract_inverted_index") or {}
+    words = [
+        (position, word) for word, positions in index.items() for position in positions
+    ]
+    abstract = " ".join(word for _, word in sorted(words))
+    return PaperRecord(
+        identity=PaperIdentity.from_values(arxiv_id=arxiv_id, doi=doi),
+        title=work.get("display_name") or work.get("title") or "",
+        authors=[name for name in authors if name],
+        abstract=abstract,
+        publication_date=(
+            date.fromisoformat(work["publication_date"])
+            if work.get("publication_date")
+            else None
+        ),
+        citation_count=work.get("cited_by_count"),
+        raw_influence=(
+            {"fwci": work["fwci"]} if isinstance(work.get("fwci"), (int, float)) else {}
+        ),
+    )
+
+
 class SeedResolver(Function[ContentItemCollection, SeedCollection]):
-    """Resolves stored content items into seeds; skips unresolvable ones."""
+    """Resolve seeds through the selected provider-neutral graph client."""
 
     def __init__(
         self,
         monitoring_handler: MonitoringHandler,
-        openalex_client: OpenAlexClient,
+        paper_graph_client: PaperGraphClient | None = None,
         title_similarity_threshold: float = 0.9,
+        openalex_client: PaperGraphClient | None = None,
     ) -> None:
-        self.openalex = openalex_client
+        self.client = paper_graph_client or openalex_client
+        if self.client is None:
+            raise ValueError("paper_graph_client is required")
         self.title_similarity_threshold = title_similarity_threshold
         super().__init__(monitoring_handler)
 
     def _resolve_one(self, item) -> tuple[Seed | None, str]:
-        """Resolve one content item; returns (seed or None, reason)."""
-        envelope = self.openalex.search_works_by_title(item.name)
-        results = envelope.get("results") or []
-        if not results:
-            return None, "no_work_found"
-        best = results[0]
-        work_title = best.get("display_name") or best.get("title") or ""
-        if not titles_match(item.name, work_title, self.title_similarity_threshold):
-            return None, "openalex_title_mismatch"
-        work_id = best.get("id") or None
-        if work_id is None:
-            return None, "no_work_id"
+        if hasattr(self.client, "search_papers"):
+            records = self.client.search_papers(item.name).papers
+        else:
+            envelope = self.client.search_works_by_title(item.name)
+            records = [_legacy_record(work) for work in envelope.get("results") or []]
+        if not records:
+            return None, "no_paper_found"
+        best = records[0]
+        if not titles_match(item.name, best.title, self.title_similarity_threshold):
+            return None, "provider_title_mismatch"
+        identity = best.identity
+        if identity.arxiv_id is None and identity.doi is None:
+            return None, "no_canonical_identity"
         return (
             Seed(
                 content_item_id=item.id,
-                work_id=work_id,
+                arxiv_id=identity.arxiv_id,
+                doi=identity.doi,
                 title=item.name,
                 influence_value=(
                     float(item.influence_score)
@@ -68,36 +96,24 @@ class SeedResolver(Function[ContentItemCollection, SeedCollection]):
         )
 
     def _run(self, data: ContentItemCollection) -> tuple[SeedCollection, str]:
-        resolved: list[Seed] = []
-        skipped: list[tuple[str, str]] = []
-        total_items = len(data.items)
-        for i, item in enumerate(data.items):
+        resolved, skipped = [], []
+        for item in data.items:
             try:
                 seed, reason = self._resolve_one(item)
             except Exception:
-                logger.exception("resolution request failed for seed '%s'", item.name)
+                logger.exception("seed resolution failed for '%s'", item.name)
                 seed, reason = None, "api_error"
-            if seed is None:
-                logger.error("skipped seed '%s': %s", item.name, reason)
-                skipped.append((item.name, reason))
-            else:
-                logger.debug("resolved %d/%d: '%s'", i + 1, total_items, item.name)
-                resolved.append(seed)
-
+            (resolved if seed is not None else skipped).append(
+                seed if seed is not None else (item.name, reason)
+            )
         lines = [
-            f"Seeds in: {len(data.items)}, resolved: {len(resolved)}, "
-            f"skipped: {len(skipped)}"
+            f"Seeds in: {len(data.items)}, resolved: {len(resolved)}, skipped: {len(skipped)}"
         ]
-        for name, reason in skipped:
-            lines.append(f"### SEED SKIPPED: {name}\nReason: {reason}\n")
+        lines.extend(
+            f"### SEED SKIPPED: {name}\nReason: {reason}\n" for name, reason in skipped
+        )
         for seed in resolved:
-            influence = (
-                f"{seed.influence_value:.1f}"
-                if seed.influence_value is not None
-                else "-"
-            )
             lines.append(
-                f"### {seed.title}\nWork id: {seed.work_id} | influence: {influence}\n"
+                f"### {seed.title}\nIdentifiers: arxiv={seed.arxiv_id or '-'} doi={seed.doi or '-'} | influence: {seed.influence_value if seed.influence_value is not None else '-'}\n"
             )
-        logger.info("resolved %d/%d seeds", len(resolved), len(data.items))
         return SeedCollection(seeds=resolved), "\n".join(lines)
