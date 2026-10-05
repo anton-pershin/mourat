@@ -1,0 +1,7 @@
+_target_: mourat.writers.db_writer.ContentItemDbWriter
+_partial_: true  # expect positional argument: monitoring_handler
+enabled: false  # set true in the main config or on the command line to persist to the DB
+source_type_id: paper
+platform_id: web
+# Authority influence (spec 14): this path's influence measure.
+influence_metric_id: authority

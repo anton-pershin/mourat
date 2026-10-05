@@ -1,0 +1,5 @@
+_target_: mourat.processors.relevance_triage.RelevanceTriageClassifier
+_partial_: true  # expect positional arguments: monitoring_handler, model
+batch_size: 25
+request_retries: 2
+request_retry_delay_seconds: 2.0

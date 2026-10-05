@@ -1,0 +1,2 @@
+_target_: mourat.processors.candidate_converter.CandidateToResolvedConverter
+_partial_: true  # expect positional argument: monitoring_handler

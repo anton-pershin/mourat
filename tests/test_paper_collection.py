@@ -6,9 +6,9 @@ ContentItemDbWriter, JsonlWriter, and the entry-point attribute loading.
 
 import json
 import os
-from datetime import date
 import sqlite3
 import tempfile
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +16,8 @@ from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from mourat.clients.semantic_scholar import SemanticScholarClient
 from mourat.collectors.paper_discoverer import PaperDiscoverer
 from mourat.data_models import (
     PaperCandidate,
@@ -27,17 +29,15 @@ from mourat.data_models import (
     ScoreEntry,
 )
 from mourat.filters import PaperScoreFilter
-from mourat.processors.arxiv_pdf_verifier import ArxivPdfVerifier
-from mourat.processors.influence_assessor import InfluenceAssessor
 from mourat.monitoring import MonitoringHandler
-from mourat.resolvers.paper_resolver import PaperResolver
-from mourat.scripts.collect_influential_papers_from_seeds import _report_selected_client
-from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
-from mourat.clients.semantic_scholar import SemanticScholarClient
+from mourat.processors.arxiv_pdf_verifier import ArxivPdfVerifier
 from mourat.processors.content_item_scorer import (
     PaperContentItemScorer,
     _candidate_as_resolved,
 )
+from mourat.processors.influence_assessor import InfluenceAssessor
+from mourat.resolvers.paper_resolver import PaperResolver
+from mourat.scripts.collect_influential_papers_from_seeds import _report_selected_client
 from mourat.writers.db_writer import ContentItemDbWriter, _content_item_id
 from mourat.writers.jsonl_writer import JsonlWriter
 
@@ -526,6 +526,24 @@ class TestContentItemId:
             "paper_bert_pre_training_of_deep_bi_id"
         )
 
+    def test_arxiv_id_wins_when_present(self):
+        # R6: when the record carries an arXiv id, the id derives from it;
+        # title spelling is irrelevant.
+        assert (
+            _content_item_id("Attention Is All You Need", "1706.03762")
+            == "paper_arxiv-1706.03762"
+        )
+        assert _content_item_id(
+            "A DIFFERENT title spelling", "1706.03762"
+        ) == _content_item_id("Attention Is All You Need", "1706.03762")
+
+    def test_title_slug_fallback_without_arxiv_id(self):
+        # R6: paths without an arXiv id keep the unchanged title-slug rule.
+        assert (
+            _content_item_id("Attention Is All You Need", None)
+            == "paper_attention_is_all_you_need"
+        )
+
 
 class TestContentItemDbWriter:
     def test_creates_content_item_and_links(self, db_conn):
@@ -635,7 +653,8 @@ class TestContentItemDbWriter:
         )
         writer(ScoredPaperCollection(papers=[sp]), "4")
 
-        item = ci.get_content_item(db_conn, "paper_attention_is_all_you_need")
+        # R6: a record carrying an arXiv id is keyed by the arxiv-derived id
+        item = ci.get_content_item(db_conn, "paper_arxiv-1706.03762")
         assert item is not None
         assert "doi" not in item
         assert "arxiv_id" not in item

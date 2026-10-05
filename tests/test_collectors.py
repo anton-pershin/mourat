@@ -4,12 +4,17 @@ import datetime
 import itertools
 from unittest.mock import MagicMock, patch
 
+from mourat.clients.openalex import OpenAlexClient
+from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.collectors.arxiv import ArxivPaperCollector
 from mourat.collectors.seed_expander import SeedExpander
-from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
-from mourat.clients.openalex import OpenAlexClient
 from mourat.collectors.semantic_scholar import SemanticScholarPaperCollector
-from mourat.data_models import PaperInfoCollection, Seed, SeedCollection
+from mourat.data_models import (
+    PaperCandidateCollection,
+    PaperInfoCollection,
+    Seed,
+    SeedCollection,
+)
 from mourat.monitoring import MonitoringHandler
 
 # --- Helpers ---
@@ -65,19 +70,56 @@ class TestArxivPaperCollector:
             http_client=mock_client,
             api_url="http://example.com/feed",
             mode="newest",
-            start_date="2024-01-01",
-            end_date="2024-12-31",
-            max_results=100,
         )
 
-        result = collector(None, "test")
+        result = collector(None, "test")  # T1
 
-        assert isinstance(result, PaperInfoCollection)
+        assert isinstance(result, PaperCandidateCollection)
         assert len(result.papers) == 2
-        assert result.papers[0].title == "Test Paper One"
+        first = result.papers[0]
+        assert first.title == "Test Paper One"
+        assert first.description == "Abstract of paper one"  # abstract -> description
+        assert first.urls_seen == ["http://arxiv.org/abs/2401.00001"]
+        assert first.arxiv_id == "2401.00001"
+        assert first.authors == ["Smith"]
+        assert first.publication_date == "2024-01-15"  # ISO string (T3b)
         assert result.papers[1].title == "Test Paper Two"
-        assert result.papers[0].authors == ["Smith"]
-        assert result.papers[0].publication_date == datetime.date(2024, 1, 15)
+
+    def test_version_suffix_stripped_from_arxiv_id(self):
+        # T2: link carrying a version suffix yields the base id
+        feed = SAMPLE_ARXIV_FEED.replace(
+            "http://arxiv.org/abs/2401.00001", "http://arxiv.org/abs/2401.00001v2"
+        )
+        mock_handler = _make_monitoring_handler()
+        mock_response = MagicMock()
+        mock_response.text = feed
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        collector = ArxivPaperCollector(
+            monitoring_handler=mock_handler,
+            http_client=mock_client,
+            api_url="http://example.com/feed",
+            mode="newest",
+        )
+        result = collector(None, "test")
+        assert result.papers[0].arxiv_id == "2401.00001"
+
+    def test_provenance_is_rss(self):
+        mock_handler = _make_monitoring_handler()
+        mock_response = MagicMock()
+        mock_response.text = SAMPLE_ARXIV_FEED
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        collector = ArxivPaperCollector(
+            monitoring_handler=mock_handler,
+            http_client=mock_client,
+            api_url="http://example.com/feed",
+            mode="newest",
+        )
+        result = collector(None, "test")
+        assert result.papers[0].provenance == ["arxiv_rss"]
 
     def test_newest_mode_raises_on_missing_start_date(self):
         mock_handler = _make_monitoring_handler()

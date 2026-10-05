@@ -1,18 +1,51 @@
 import datetime
+import re
 from typing import Any, Literal, TypeAlias
 
 import feedparser
 import httpx
 
 from mourat.base import Function
-from mourat.data_models import PaperInfo, PaperInfoCollection
+from mourat.data_models import PaperCandidate, PaperCandidateCollection
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import normalize_author_name
 
 ArxivSearchMode: TypeAlias = Literal["newest", "most_relevant"]
 
+_ARXIV_ABS_ID_RE = re.compile(r"/abs/([\d.]+)(?:v\d+)?$")
 
-class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
+
+def _extract_arxiv_id(link: str) -> str | None:
+    """Base arXiv id from an abs link; version suffix stripped (R1)."""
+    m = _ARXIV_ABS_ID_RE.search(link)
+    return m.group(1) if m else None
+
+
+def _candidate_from_entry(entry) -> PaperCandidate:
+    link = entry.link
+    title = entry.title.replace("\n", " ")
+    abstract = entry.description.split("\n")[1][10:]
+    authors = [
+        normalize_author_name(author_data["name"]) for author_data in entry.authors
+    ]
+    publication_date = datetime.date(
+        year=entry.published_parsed.tm_year,
+        month=entry.published_parsed.tm_mon,
+        day=entry.published_parsed.tm_mday,
+    ).isoformat()
+
+    return PaperCandidate(
+        title=title,
+        authors=authors,
+        description=abstract,
+        urls_seen=[link],
+        arxiv_id=_extract_arxiv_id(link),
+        publication_date=publication_date,
+        provenance=["arxiv_rss"],
+    )
+
+
+class ArxivPaperCollector(Function[Any, PaperCandidateCollection]):
     def __init__(
         self,
         monitoring_handler: MonitoringHandler,
@@ -47,7 +80,7 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
 
         super().__init__(monitoring_handler)
 
-    def _run(self, data: Any) -> tuple[PaperInfoCollection, str]:
+    def _run(self, data: Any) -> tuple[PaperCandidateCollection, str]:
         output = self.mode_to_handler[self.mode]()
         text_for_monitoring = (
             "# URL;\n"
@@ -60,41 +93,15 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
 
         return output, text_for_monitoring
 
-    def _handle_newest_mode(self) -> PaperInfoCollection:
-        output = PaperInfoCollection(papers=[])
-
+    def _handle_newest_mode(self) -> PaperCandidateCollection:
         r: httpx.Response = self.http_client.get(self.api_url)
-
         feed = feedparser.parse(r.text)
-        for entry in feed.entries:
-            link = entry.link
-            title = entry.title.replace("\n", " ")
-            abstract = entry.description.split("\n")[1][10:]
-            authors = [
-                normalize_author_name(author_data["name"])
-                for author_data in entry.authors
-            ]
-            publication_date = datetime.date(
-                year=entry.published_parsed.tm_year,
-                month=entry.published_parsed.tm_mon,
-                day=entry.published_parsed.tm_mday,
-            )
-
-            output.papers.append(
-                PaperInfo(
-                    title=title,
-                    link=link,
-                    abstract=abstract,
-                    authors=authors,
-                    publication_date=publication_date,
-                )
-            )
-
+        output = PaperCandidateCollection(
+            papers=[_candidate_from_entry(entry) for entry in feed.entries]
+        )
         return output
 
-    def _handle_most_relevant_mode(self) -> PaperInfoCollection:
-        output = PaperInfoCollection(papers=[])
-
+    def _handle_most_relevant_mode(self) -> PaperCandidateCollection:
         search_query = ""
         if self.keywords is not None:
             search_query += "all:"
@@ -120,28 +127,7 @@ class ArxivPaperCollector(Function[Any, PaperInfoCollection]):
         )
 
         feed = feedparser.parse(r.text)
-        for entry in feed.entries:
-            link = entry.link
-            title = entry.title.replace("\n", " ")
-            abstract = entry.description.split("\n")[1][10:]
-            authors = [
-                normalize_author_name(author_data["name"])
-                for author_data in entry.authors
-            ]
-            publication_date = datetime.date(
-                year=entry.published_parsed.tm_year,
-                month=entry.published_parsed.tm_mon,
-                day=entry.published_parsed.tm_mday,
-            )
-
-            output.papers.append(
-                PaperInfo(
-                    title=title,
-                    link=link,
-                    abstract=abstract,
-                    authors=authors,
-                    publication_date=publication_date,
-                )
-            )
-
+        output = PaperCandidateCollection(
+            papers=[_candidate_from_entry(entry) for entry in feed.entries]
+        )
         return output

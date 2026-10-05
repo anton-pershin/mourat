@@ -3,11 +3,38 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/caila_qwen3_8b@slow_llm
-  - llm/caila_qwen3_8b@fast_llm
-  - collector: arxiv_rss_cs_lg
-  - paper_assigner: paper_assigner
+  - llm/caila_glm_5_3_flash@scoring_llm
+  - llm/caila_glm_5_3_flash@authority_llm
+  - relevance_triage: default
+  - arxiv_html_affiliations: default
+  - authority_influence: default
+  - candidate_converter: default
+  - content_item_scorer: default
+  - score_filter: default
+  - db_writer: authority
+  - jsonl_writer: default
 
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}
+
+# Per-feed collector configs (R8): each entry is one arXiv RSS feed.
+feeds:
+  cs_lg:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true  # expect positional arguments: monitoring_handler, http_client
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/cs.LG
+
+# Research attribute ids to collect for (loaded from the database).
+# Leave a list empty to skip that kind of attribute; at least one must resolve.
+research_question_ids: []
+technical_challenge_ids: []
+research_topic_ids: []
+constraint_ids: []
+
+# Scoring threshold on the filtering score (0-100)
+score_threshold: 50
+
+# JSONL output path (used when jsonl_writer.enabled is true)
+jsonl_output_path: ${result_dir}/newest_papers.jsonl

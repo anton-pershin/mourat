@@ -1,0 +1,3 @@
+_target_: mourat.collectors.arxiv_html_affiliations.ArxivHtmlAffiliationFetcher
+_partial_: true  # expect positional arguments: monitoring_handler, http_client
+request_delay_seconds: 1.0
