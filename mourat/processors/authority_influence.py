@@ -151,8 +151,18 @@ class AuthorityInfluenceAssessor(
         triples = [(f"paper_{i}", p) for i, p in enumerate(data.papers)]
         id_to_paper = dict(triples)
 
-        for start in range(0, len(triples), self.batch_size):
+        n_batches = (len(triples) + self.batch_size - 1) // self.batch_size
+        for batch_idx, start in enumerate(range(0, len(triples), self.batch_size), 1):
             batch = triples[start : start + self.batch_size]
+            logger.info(
+                "authority batch %d/%d | papers %d-%d of %d | first: '%s'",
+                batch_idx,
+                n_batches,
+                start + 1,
+                start + len(batch),
+                len(triples),
+                batch[0][1].title[:60],
+            )
             scores = self._run_batch(batch)
 
             missing = [(pid, p) for pid, p in batch if pid not in scores]

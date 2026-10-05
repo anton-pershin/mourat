@@ -195,8 +195,18 @@ class RelevanceTriageClassifier(
         dropped_lines: list[str] = []
         id_to_paper = {f"paper_{i}": p for i, p in enumerate(data.papers)}
 
-        for start in range(0, len(triples), self.batch_size):
+        n_batches = (len(triples) + self.batch_size - 1) // self.batch_size
+        for batch_idx, start in enumerate(range(0, len(triples), self.batch_size), 1):
             batch = triples[start : start + self.batch_size]
+            logger.info(
+                "triage batch %d/%d | papers %d-%d of %d | first: '%s'",
+                batch_idx,
+                n_batches,
+                start + 1,
+                start + len(batch),
+                len(triples),
+                batch[0][1][:60],
+            )
             verdicts = self._run_batch(batch, attributes)
             for pid, _, _ in batch:
                 paper = id_to_paper[pid]
