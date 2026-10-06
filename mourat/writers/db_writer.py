@@ -16,14 +16,17 @@ logger = logging.getLogger(__name__)
 _ID_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
-def _content_item_id(title: str) -> str:
-    """Derive a stable content item id from the paper title.
+def _content_item_id(title: str, arxiv_id: str | None = None) -> str:
+    """Derive a stable content item id for a paper (R6).
 
-    Normalising the title (lowercase, alphanumeric runs joined by single
-    underscores) makes a re-run over the same paper produce the same id, which
-    is what the upsert path keys on. Two different spellings of one paper
-    produce different ids — an accepted, stated limitation (4.3).
+    When the record carries an arXiv id, the id is derived from it (base
+    id, already version-stripped by the collector): re-runs over the same
+    paper always meet the same row regardless of title spelling drift.
+    When it does not, the existing title-slug derivation applies unchanged
+    — other content paths have no arXiv id and must keep working.
     """
+    if arxiv_id:
+        return f"paper_arxiv-{arxiv_id}"
     slug = _ID_NON_ALNUM.sub("_", title.strip().lower()).strip("_")
     return f"paper_{slug}"
 
@@ -78,7 +81,7 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
 
     def _write_item(self, sp) -> str:
         """Write one scored paper; returns 'created', 'updated' or 'failed'."""
-        item_id = _content_item_id(sp.paper.title)
+        item_id = _content_item_id(sp.paper.title, getattr(sp.paper, "arxiv_id", None))
         authors = "; ".join(sp.paper.authors)
         url = sp.paper.url or None
 

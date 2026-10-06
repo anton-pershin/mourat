@@ -314,6 +314,28 @@ class PaperCandidate(BaseModel):
     )
     arxiv_id: str | None = None
     doi: str | None = None
+    publication_date: str | None = Field(
+        default=None,
+        description="ISO publication date when the producer supplies one deterministically",
+    )
+    influence_score: int | None = Field(
+        default=None,
+        description="In-flight influence score written by the path's influence assessor",
+    )
+    affiliations: dict[str, list[str]] | None = Field(
+        default=None,
+        description=(
+            "In-flight author -> affiliation pairs fetched deterministically; None "
+            "when unknown (no HTML render or no affiliation nodes)"
+        ),
+    )
+    announce_type: str | None = Field(
+        default=None,
+        description=(
+            "In-flight arXiv announce type from the RSS feed: 'new', 'replace' "
+            "or 'cross'; monitoring only, never persisted"
+        ),
+    )
     provenance: list[str] = Field(
         default_factory=lambda: ["web_search"],
         description="Generator or agent names that produced this candidate",
