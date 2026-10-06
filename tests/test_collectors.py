@@ -82,7 +82,10 @@ class TestArxivPaperCollector:
         assert first.urls_seen == ["http://arxiv.org/abs/2401.00001"]
         assert first.arxiv_id == "2401.00001"
         assert first.authors == ["Smith"]
-        assert first.publication_date == "2024-01-15"  # ISO string (T3b)
+        # the feed carries no per-item date; publication_date stays None
+        # until the affiliation fetcher sets it from the Atom API
+        assert first.publication_date is None
+        assert first.announce_type is None  # sample feed has no Announce Type
         assert result.papers[1].title == "Test Paper Two"
 
     def test_version_suffix_stripped_from_arxiv_id(self):
@@ -104,6 +107,28 @@ class TestArxivPaperCollector:
         )
         result = collector(None, "test")
         assert result.papers[0].arxiv_id == "2401.00001"
+
+    def test_announce_type_parsed(self):
+        # update entries carry "Announce Type: replace" in the description
+        feed = SAMPLE_ARXIV_FEED.replace(
+            "Abstract: Abstract of paper one",
+            "Announce Type: replace\nAbstract: Abstract of paper one",
+        )
+        mock_handler = _make_monitoring_handler()
+        mock_response = MagicMock()
+        mock_response.text = feed
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        collector = ArxivPaperCollector(
+            monitoring_handler=mock_handler,
+            http_client=mock_client,
+            api_url="http://example.com/feed",
+            mode="newest",
+        )
+        result = collector(None, "test")
+        assert result.papers[0].announce_type == "replace"
+        assert result.papers[1].announce_type is None
 
     def test_provenance_is_rss(self):
         mock_handler = _make_monitoring_handler()

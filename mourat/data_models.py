@@ -329,6 +329,13 @@ class PaperCandidate(BaseModel):
             "when unknown (no HTML render or no affiliation nodes)"
         ),
     )
+    announce_type: str | None = Field(
+        default=None,
+        description=(
+            "In-flight arXiv announce type from the RSS feed: 'new', 'replace' "
+            "or 'cross'; monitoring only, never persisted"
+        ),
+    )
     provenance: list[str] = Field(
         default_factory=lambda: ["web_search"],
         description="Generator or agent names that produced this candidate",

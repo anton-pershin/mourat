@@ -17,6 +17,7 @@ defaults:
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}
+db_path: ${user_settings.db_path}
 
 # Per-feed collector configs (R8): each entry is one arXiv RSS feed.
 feeds:
@@ -29,7 +30,12 @@ feeds:
 # Research attribute ids to collect for (loaded from the database).
 # Leave a list empty to skip that kind of attribute; at least one must resolve.
 research_question_ids: []
-technical_challenge_ids: []
+technical_challenge_ids:
+  - prefill_time_reduction
+  - decode_time_reduction
+  - reasoning_time_reduction
+  - llm_kv_cache_reduction
+  - llm_model_size_reduction
 research_topic_ids: []
 constraint_ids: []
 

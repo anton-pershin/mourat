@@ -13,6 +13,7 @@ from mourat.utils.common import normalize_author_name
 ArxivSearchMode: TypeAlias = Literal["newest", "most_relevant"]
 
 _ARXIV_ABS_ID_RE = re.compile(r"/abs/([\d.]+)(?:v\d+)?$")
+_ANNOUNCE_TYPE_RE = re.compile(r"Announce Type: (\w+)")
 
 
 def _extract_arxiv_id(link: str) -> str | None:
@@ -22,17 +23,22 @@ def _extract_arxiv_id(link: str) -> str | None:
 
 
 def _candidate_from_entry(entry) -> PaperCandidate:
+    """One RSS item -> PaperCandidate.
+
+    The feed items carry no per-item date (feedparser's published_parsed is
+    the feed-generation date), so publication_date is left None here; the
+    affiliation fetcher sets it from the arXiv Atom API's `published`
+    field (first submission date). `announce_type` is kept in-flight for
+    monitoring ("new" / "replace" / "cross").
+    """
     link = entry.link
     title = entry.title.replace("\n", " ")
     abstract = entry.description.split("\n")[1][10:]
     authors = [
         normalize_author_name(author_data["name"]) for author_data in entry.authors
     ]
-    publication_date = datetime.date(
-        year=entry.published_parsed.tm_year,
-        month=entry.published_parsed.tm_mon,
-        day=entry.published_parsed.tm_mday,
-    ).isoformat()
+    m = _ANNOUNCE_TYPE_RE.search(entry.description)
+    announce_type = m.group(1).lower() if m else None
 
     return PaperCandidate(
         title=title,
@@ -40,8 +46,9 @@ def _candidate_from_entry(entry) -> PaperCandidate:
         description=abstract,
         urls_seen=[link],
         arxiv_id=_extract_arxiv_id(link),
-        publication_date=publication_date,
+        publication_date=None,
         provenance=["arxiv_rss"],
+        announce_type=announce_type,
     )
 
 

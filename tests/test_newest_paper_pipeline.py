@@ -61,6 +61,12 @@ def _ids_in_prompt(prompt: str) -> list[str]:
     return re.findall(r'"id": "(paper_\d+)"', prompt)
 
 
+def _run_with_handler(component, data):
+    """Run a Function stage and return (output, monitoring text)."""
+    output = component(data, "t")
+    return output, component.monitoring_handler.calls[-1][1]
+
+
 def _verdicts_json(ids: list[str], score=None, relevant=None, skip=None):
     """Build a TriageResult/AuthorityResult JSON for the given ids."""
     verdicts = []
@@ -109,9 +115,14 @@ class TestArxivHtmlAffiliationFetcher:
     def _fetcher(self, responses: dict[str, object]):
         client = MagicMock()
 
-        def get(url):
+        def get(url, params=None):
             r = MagicMock()
-            result = responses.get(url, Exception("404"))
+            if "export.arxiv.org" in url:
+                # Atom API date lookup keyed by id_list param
+                aid = params["id_list"]
+                result = responses.get(f"atom:{aid}", Exception("404"))
+            else:
+                result = responses.get(url, Exception("404"))
             if isinstance(result, Exception):
                 raise result
             r.text = result
@@ -150,6 +161,42 @@ class TestArxivHtmlAffiliationFetcher:
         coll = _make_collection(1)
         result = fetcher(coll, "t")
         assert result.papers[0].affiliations is None
+
+    def test_sets_first_publication_date_from_atom_api(self):
+        url = "https://arxiv.org/html/2401.00000v1"
+        atom = (
+            '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">'
+            "<entry><published>2017-06-12T06:36:04Z</published>"
+            "<updated>2023-08-02T00:00:00Z</updated></entry></feed>"
+        )
+        fetcher = self._fetcher({url: AFFIL_HTML, "atom:2401.00000": atom})
+        coll = _make_collection(1)
+        coll.papers[0].publication_date = None
+        result, monitoring = _run_with_handler(fetcher, coll)
+        # FIRST submission date, not the revision date
+        assert result.papers[0].publication_date == "2017-06-12"
+        assert "dated from Atom API: 1" in monitoring
+
+    def test_atom_api_failure_leaves_date_none(self):
+        url = "https://arxiv.org/html/2401.00000v1"
+        fetcher = self._fetcher({url: AFFIL_HTML})  # no atom: entry -> 404
+        coll = _make_collection(1)
+        coll.papers[0].publication_date = None
+        result, monitoring = _run_with_handler(fetcher, coll)
+        assert result.papers[0].publication_date is None  # None, not a wrong date
+        assert "undated: 1" in monitoring
+
+    def test_update_count_in_monitoring(self):
+        url = "https://arxiv.org/html/2401.00000v1"
+        atom = (
+            '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">'
+            "<entry><published>2024-01-01T00:00:00Z</published></entry></feed>"
+        )
+        fetcher = self._fetcher({url: AFFIL_HTML, "atom:2401.00000": atom})
+        coll = _make_collection(1)
+        coll.papers[0].announce_type = "replace"
+        _, monitoring = _run_with_handler(fetcher, coll)
+        assert "updates (announce type 'replace'): 1" in monitoring
 
     def test_candidate_without_arxiv_id_skipped(self):
         fetcher = self._fetcher({})

@@ -73,12 +73,17 @@ def _extract_affiliations(html: str) -> dict[str, list[str]]:
 class ArxivHtmlAffiliationFetcher(
     Function[PaperCandidateCollection, PaperCandidateCollection]
 ):
-    """Attaches author affiliations to candidates (R3).
+    """Attaches author affiliations and true publication dates (R3).
 
-    Pass-through by count: every candidate is returned; the only change is
-    the in-flight `affiliations` field (None when unknown). Fetching is
-    paced: `request_delay_seconds` between HTML fetches.
+    Pass-through by count: every candidate is returned. Two in-flight
+    fields change: `affiliations` (None when unknown) and
+    `publication_date`, set from the arXiv Atom API's `published` field —
+    the FIRST submission date, not the last revision. On Atom API failure
+    the date stays None rather than a wrong value. Fetching is paced:
+    `request_delay_seconds` between requests.
     """
+
+    _ATOM_API_URL = "https://export.arxiv.org/api/query"
 
     def __init__(
         self,
@@ -90,19 +95,57 @@ class ArxivHtmlAffiliationFetcher(
         self.request_delay_seconds = request_delay_seconds
         super().__init__(monitoring_handler)
 
+    def _fetch_first_publication_date(self, arxiv_id: str) -> str | None:
+        """First-publication date (YYYY-MM-DD) from the Atom API; None on failure.
+
+        `published` is the original submission date; `updated` would be the
+        last revision, which is NOT what the pipeline stores.
+        """
+        import xml.etree.ElementTree as ET
+
+        ns = {"a": "http://www.w3.org/2005/Atom"}
+        try:
+            r: httpx.Response = self.http_client.get(
+                self._ATOM_API_URL, params={"id_list": arxiv_id}
+            )
+            r.raise_for_status()
+            root = ET.fromstring(r.text)
+            entry = root.find("a:entry", ns)
+            if entry is None:
+                logger.warning("Atom API returned no entry for %s", arxiv_id)
+                return None
+            published = entry.find("a:published", ns)
+            if published is None or not published.text:
+                return None
+            return published.text[:10]  # YYYY-MM-DD
+        except Exception as exc:
+            logger.warning("publication-date fetch failed for '%s': %s", arxiv_id, exc)
+            return None
+
     def _run(
         self, data: PaperCandidateCollection
     ) -> tuple[PaperCandidateCollection, str]:
         t_start = time.monotonic()
         fetched = 0
         with_affiliations = 0
+        dated = 0
         unknown: list[str] = []
+        undated: list[str] = []
         total = len(data.papers)
 
         for i, paper in enumerate(data.papers, 1):
             if paper.arxiv_id is None:
                 unknown.append(paper.title)
                 continue
+
+            # True first-publication date from the Atom API (one request).
+            date = self._fetch_first_publication_date(paper.arxiv_id)
+            if date is not None:
+                paper.publication_date = date
+                dated += 1
+            else:
+                undated.append(paper.title)
+
             url = f"https://arxiv.org/html/{paper.arxiv_id}v1"
             try:
                 r: httpx.Response = self.http_client.get(url)
@@ -117,6 +160,8 @@ class ArxivHtmlAffiliationFetcher(
                 )
                 unknown.append(paper.title)
                 paper.affiliations = None
+                if i < total:
+                    time.sleep(self.request_delay_seconds)
                 continue
 
             fetched += 1
@@ -131,14 +176,20 @@ class ArxivHtmlAffiliationFetcher(
             if i < total:
                 time.sleep(self.request_delay_seconds)
 
+        update_count = sum(1 for p in data.papers if p.announce_type == "replace")
         lines = [
             (
                 f"Papers: {total}, fetched: {fetched}, with affiliations: "
-                f"{with_affiliations}, unknown: {len(unknown)}"
+                f"{with_affiliations}, affiliations unknown: {len(unknown)}, "
+                f"dated from Atom API: {dated}, undated: {len(undated)}, "
+                f"updates (announce type 'replace'): {update_count}"
             ),
             "Affiliations unknown for:",
         ]
         lines.extend(f"- {t}" for t in unknown)
+        if undated:
+            lines.append("Publication date unavailable for:")
+            lines.extend(f"- {t}" for t in undated)
         return (
             data,
             "\n".join(lines) + f"\n(stage took {time.monotonic() - t_start:.1f}s)",
