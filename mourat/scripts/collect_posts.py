@@ -1,16 +1,16 @@
 """Collect posts from web resources, enrich, score, and save to database."""
 
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 
 import hydra
 import praw
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pydantic_ai.models import Model
 
 from mourat.data_models import RedditPostCollection, ScoredRedditPostCollection
 from mourat.database import business_domain as bd
-from mourat.database import content_item as ci
 from mourat.database import create_connection
 from mourat.database import research_domain as rd
 from mourat.monitoring import MonitoringHandler
@@ -22,84 +22,47 @@ logger = logging.getLogger(__name__)
 CONFIG_NAME = "config_collect_posts"
 
 
-def save_posts_to_db(conn, scored: ScoredRedditPostCollection) -> int:
-    """Save scored posts to the database as ContentItem records."""
-    saved = 0
-
-    # Ensure source type and platform exist
+@contextmanager
+def omegaconf_open_dict(cfg: DictConfig):
+    old = OmegaConf.is_struct(cfg)
+    OmegaConf.set_struct(cfg, False)
     try:
-        ci.create_source_type(conn, "post", "Post", "Social media or blog post")
-    except Exception:
-        pass
-    try:
-        ci.create_platform(conn, "reddit", "Reddit", "Reddit platform")
-    except Exception:
-        pass
-    try:
-        ci.create_influence_metric(conn, "upvotes", "Upvotes", "Reddit upvote count")
-    except Exception:
-        pass
+        yield cfg
+    finally:
+        OmegaConf.set_struct(cfg, old)
 
-    for sp in scored.posts:
-        item_id = f"reddit_{sp.post.submission_id}"
-        influence_score = min(100, sp.post.score)
 
+def _read_enabled(writer_cfg: DictConfig) -> bool:
+    enabled = writer_cfg.get("enabled", False)
+    if enabled and "enabled" in writer_cfg:
+        with omegaconf_open_dict(writer_cfg):
+            del writer_cfg["enabled"]
+    return bool(enabled)
+
+
+def _write_posts(
+    cfg: DictConfig,
+    monitoring_handler: MonitoringHandler,
+    db_path: Path,
+    filtered_posts: ScoredRedditPostCollection,
+    step_id: str,
+) -> None:
+    """Run each independently enabled writer on the filtered posts."""
+    db_writer_cfg = cfg.db_writer.copy()
+    if _read_enabled(db_writer_cfg):
+        conn = create_connection(db_path)
         try:
-            ci.create_content_item(
-                conn,
-                id=item_id,
-                name=sp.post.title,
-                source_type_id="post",
-                platform_id="reddit",
-                influence_metric_id="upvotes",
-                description=sp.post.text or "",
-                url=sp.post.url,
-                published_at=sp.post.date,
-                authors=sp.post.author,
-                influence_score=influence_score,
+            writer = hydra.utils.instantiate(db_writer_cfg)(
+                monitoring_handler, conn=conn
             )
-        except Exception:
-            continue  # Already exists, skip
+            writer(filtered_posts, step_id=step_id)
+        finally:
+            conn.close()
 
-        for score_entry in sp.relevance_scores:
-            rid = score_entry.id
-            rtype = score_entry.type
-            score_val = score_entry.score
-            justification = score_entry.justification
-
-            if rid and rtype and score_val is not None:
-                if rtype == "rq":
-                    try:
-                        ci.add_item_research_question(
-                            conn, item_id, rid, justification, int(score_val)
-                        )
-                    except Exception:
-                        pass
-                elif rtype == "tc":
-                    try:
-                        ci.add_item_technical_challenge(
-                            conn, item_id, rid, justification, int(score_val)
-                        )
-                    except Exception:
-                        pass
-                elif rtype == "topic":
-                    try:
-                        ci.add_item_research_topic(
-                            conn, item_id, rid, justification, int(score_val)
-                        )
-                    except Exception:
-                        pass
-                elif rtype == "constraint":
-                    try:
-                        ci.add_item_constraint(
-                            conn, item_id, rid, justification, int(score_val)
-                        )
-                    except Exception:
-                        pass
-
-        saved += 1
-
-    return saved
+    jsonl_writer_cfg = cfg.jsonl_writer.copy()
+    if _read_enabled(jsonl_writer_cfg):
+        writer = hydra.utils.instantiate(jsonl_writer_cfg)(monitoring_handler)
+        writer(filtered_posts, step_id=step_id)
 
 
 def collect_posts_main(cfg: DictConfig) -> None:
@@ -227,22 +190,19 @@ def collect_posts_main(cfg: DictConfig) -> None:
         scored_posts, step_id=step_id
     )
 
-    # Step 8: Save
-    conn = create_connection(db_path)
-    try:
-        saved = save_posts_to_db(conn, filtered_posts)
-    finally:
-        conn.close()
+    # Step 8: Write independently configured outputs.
+    step_id = "8"
+    _write_posts(cfg, monitoring_handler, db_path, filtered_posts, step_id)
 
     logger.info(
         "Pipeline complete: %d collected, %d after heuristic filter, "
-        "%d after slop filter, %d enriched, %d scored, %d saved to database",
+        "%d after slop filter, %d enriched, %d scored, %d after score filter",
         len(raw_posts.posts),
         len(heuristic_posts.posts),
         len(posts.posts),
         len(enriched_posts.posts),
         len(scored_posts.posts),
-        saved,
+        len(filtered_posts.posts),
     )
 
 

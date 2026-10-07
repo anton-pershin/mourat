@@ -50,13 +50,13 @@ The two writer branches are independent. Each writer is a pass-through `Function
 
 #### 3.3 Todo list
 
-1. [ ] Write tests for the post DB and JSONL writers (T1–T3).
-2. [ ] Run the tests and confirm they fail before implementation.
-3. [ ] Implement Pydantic-collection-based post DB and JSONL writer stages under `mourat/writers/`.
-4. [ ] Add post writer configuration groups, with each writer disabled by default.
-5. [ ] Refactor `collect_posts.py` to pass the score-filter output to each independently enabled writer and remove the hardcoded database persistence function.
-6. [ ] Add script-wiring tests for disabled, DB-only, JSONL-only, both-enabled, and filtered-output cases (T4–T7).
-7. [ ] Run the relevant tests and applicable project checks; review the diff against this spec.
+1. [x] Write tests for the post DB and JSONL writers (T1–T3).
+2. [x] Run the tests and confirm they fail before implementation.
+3. [x] Implement Pydantic-collection-based post DB and JSONL writer stages under `mourat/writers/`.
+4. [x] Add post writer configuration groups, with each writer disabled by default.
+5. [x] Refactor `collect_posts.py` to pass the score-filter output to each independently enabled writer and remove the hardcoded database persistence function.
+6. [x] Add script-wiring tests for disabled, DB-only, JSONL-only, both-enabled, and filtered-output cases (T4–T7).
+7. [x] Run the relevant tests and applicable project checks; review the diff against this spec.
 
 #### 3.4 Modification summary
 
@@ -68,4 +68,4 @@ The two writer branches are independent. Each writer is a pass-through `Function
 | `config/config_collect_posts.yaml` | Modified: compose writer configs and define the JSONL output path |
 | `mourat/scripts/collect_posts.py` | Modified: replace hardcoded DB save with independently enabled writer stages |
 | `tests/test_post_writers.py` | New: test post DB and JSONL writer behavior |
-| `tests/test_collect_posts.py` | New or modified: test writer wiring and filtered collection handoff |
+| `tests/test_collect_posts_writers.py` | New: test writer enablement, default flags, and filtered collection handoff |

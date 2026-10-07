@@ -1,0 +1,6 @@
+_target_: mourat.writers.post_writers.PostContentItemDbWriter
+_partial_: true  # expect positional argument: monitoring_handler
+enabled: false
+source_type_id: post
+platform_id: reddit
+influence_metric_id: upvotes
