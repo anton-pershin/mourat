@@ -14,24 +14,12 @@ Entry point for the newest-papers paper collection pipeline (spec 14):
 """
 
 import logging
-from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from pydantic_ai.models import Model
-
-
-@contextmanager
-def omegaconf_open_dict(cfg: DictConfig):
-    """Temporarily unseal a struct-mode DictConfig so keys can be deleted."""
-    old = OmegaConf.is_struct(cfg)
-    OmegaConf.set_struct(cfg, False)
-    try:
-        yield cfg
-    finally:
-        OmegaConf.set_struct(cfg, old)
 
 
 from mourat.collectors.arxiv import ArxivPaperCollector
@@ -46,6 +34,7 @@ from mourat.processors.candidate_converter import CandidateToResolvedConverter
 from mourat.processors.content_item_scorer import PaperContentItemScorer
 from mourat.processors.relevance_triage import RelevanceTriageClassifier
 from mourat.utils.common import get_config_path
+from mourat.utils.config import read_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -121,15 +110,6 @@ def _load_attributes(
         )
 
     return attribute_blocks, scoring_lists, constraint_list
-
-
-def _read_enabled(writer_cfg: DictConfig) -> bool:
-    """Read the writer's enabled flag without mutating the struct-mode config."""
-    enabled = writer_cfg.get("enabled", False)
-    if enabled and "enabled" in writer_cfg:
-        with omegaconf_open_dict(writer_cfg):
-            del writer_cfg["enabled"]
-    return bool(enabled)
 
 
 def collect_newest_papers_main(cfg: DictConfig) -> None:
@@ -232,7 +212,7 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
     # Step 8: writers, independently enabled (both off = nothing written)
     step_id = "8"
     db_writer_cfg = cfg.db_writer.copy()
-    if _read_enabled(db_writer_cfg):
+    if read_enabled(db_writer_cfg):
         conn = create_connection(db_path)
         try:
             db_writer = hydra.utils.instantiate(db_writer_cfg)(
@@ -243,7 +223,7 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
             conn.close()
 
     jsonl_writer_cfg = cfg.jsonl_writer.copy()
-    if _read_enabled(jsonl_writer_cfg):
+    if read_enabled(jsonl_writer_cfg):
         jsonl_writer = hydra.utils.instantiate(jsonl_writer_cfg)(monitoring_handler)
         jsonl_writer(filtered, step_id=step_id)
 

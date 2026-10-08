@@ -8,11 +8,14 @@ defaults:
   - llm/caila_glm_5_3_flash@classification_llm
   - collector: reddit
   - slop_filter: default
+  - db_writer: posts
+  - jsonl_writer: posts
 
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}
 db_path: ${user_settings.db_path}
+jsonl_output_path: ${result_dir}/posts.jsonl
 
 # Enricher
 enricher:
@@ -87,7 +90,7 @@ scoring:
   rq_list: []
   tc_list: []
   topic_list: []
-  min_score: 50
+  min_score: 60
   agent:
     timeout: 300
     retries: 3
