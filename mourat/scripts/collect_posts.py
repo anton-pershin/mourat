@@ -17,7 +17,7 @@ from mourat.processors.content_item_scorer import PostContentItemScorer
 from mourat.utils.common import get_config_path
 from mourat.utils.config import read_enabled
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("mourat.scripts.collect_posts")
 
 CONFIG_NAME = "config_collect_posts"
 

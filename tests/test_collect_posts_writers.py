@@ -11,10 +11,11 @@ from mourat.utils.config import read_enabled
 
 
 def test_post_count_log_reports_in_out_and_filtered(caplog):
-    from mourat.scripts.collect_posts import _log_post_counts
+    import mourat.scripts.collect_posts as script
 
-    with caplog.at_level("INFO", logger="mourat.scripts.collect_posts"):
-        _log_post_counts("2", "HeuristicSlopFilter", 12, 8)
+    assert script.logger.name == "mourat.scripts.collect_posts"
+    with caplog.at_level("INFO", logger=script.logger.name):
+        script._log_post_counts("2", "HeuristicSlopFilter", 12, 8)
 
     assert (
         "step 2 | HeuristicSlopFilter | posts in: 12, posts out: 8, filtered: 4"
