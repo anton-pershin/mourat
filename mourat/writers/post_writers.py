@@ -57,7 +57,9 @@ class PostContentItemDbWriter(
     ) -> tuple[ScoredRedditPostCollection, str]:
         self._ensure_reference_rows()
         saved = 0
-        failed = 0
+        skipped_existing = 0
+        failed_inserts = 0
+        failed_links = 0
         link_writers = {
             "rq": ci.add_item_research_question,
             "tc": ci.add_item_technical_challenge,
@@ -69,6 +71,9 @@ class PostContentItemDbWriter(
             post = scored.post
             item_id = f"reddit_{post.submission_id}"
             try:
+                if ci.get_content_item(self.conn, item_id) is not None:
+                    skipped_existing += 1
+                    continue
                 ci.create_content_item(
                     self.conn,
                     id=item_id,
@@ -83,8 +88,8 @@ class PostContentItemDbWriter(
                     influence_score=min(100, post.score),
                 )
             except Exception:
-                # Keep existing behavior: an already-stored post is skipped.
-                logger.debug("post %s already exists or could not be inserted", item_id)
+                failed_inserts += 1
+                logger.exception("failed to insert Reddit post %s", item_id)
                 continue
 
             saved += 1
@@ -104,12 +109,16 @@ class PostContentItemDbWriter(
                         int(entry.score),
                     )
                 except Exception:
-                    failed += 1
+                    failed_links += 1
                     logger.exception(
                         "failed to link post %s to %s %s", item_id, entry.type, entry.id
                     )
 
-        message = f"Posts in: {len(data.posts)}, saved: {saved}, failed links: {failed}"
+        message = (
+            f"Posts in: {len(data.posts)}, saved: {saved}, "
+            f"skipped existing: {skipped_existing}, failed inserts: {failed_inserts}, "
+            f"failed links: {failed_links}"
+        )
         return data, message
 
 

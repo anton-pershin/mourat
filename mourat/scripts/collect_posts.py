@@ -1,12 +1,11 @@
 """Collect posts from web resources, enrich, score, and save to database."""
 
 import logging
-from contextlib import contextmanager
 from pathlib import Path
 
 import hydra
 import praw
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from pydantic_ai.models import Model
 
 from mourat.data_models import RedditPostCollection, ScoredRedditPostCollection
@@ -16,28 +15,11 @@ from mourat.database import research_domain as rd
 from mourat.monitoring import MonitoringHandler
 from mourat.processors.content_item_scorer import PostContentItemScorer
 from mourat.utils.common import get_config_path
+from mourat.utils.config import read_enabled
 
 logger = logging.getLogger(__name__)
 
 CONFIG_NAME = "config_collect_posts"
-
-
-@contextmanager
-def omegaconf_open_dict(cfg: DictConfig):
-    old = OmegaConf.is_struct(cfg)
-    OmegaConf.set_struct(cfg, False)
-    try:
-        yield cfg
-    finally:
-        OmegaConf.set_struct(cfg, old)
-
-
-def _read_enabled(writer_cfg: DictConfig) -> bool:
-    enabled = writer_cfg.get("enabled", False)
-    if enabled and "enabled" in writer_cfg:
-        with omegaconf_open_dict(writer_cfg):
-            del writer_cfg["enabled"]
-    return bool(enabled)
 
 
 def _write_posts(
@@ -49,7 +31,7 @@ def _write_posts(
 ) -> None:
     """Run each independently enabled writer on the filtered posts."""
     db_writer_cfg = cfg.db_writer.copy()
-    if _read_enabled(db_writer_cfg):
+    if read_enabled(db_writer_cfg):
         conn = create_connection(db_path)
         try:
             writer = hydra.utils.instantiate(db_writer_cfg)(
@@ -60,7 +42,7 @@ def _write_posts(
             conn.close()
 
     jsonl_writer_cfg = cfg.jsonl_writer.copy()
-    if _read_enabled(jsonl_writer_cfg):
+    if read_enabled(jsonl_writer_cfg):
         writer = hydra.utils.instantiate(jsonl_writer_cfg)(monitoring_handler)
         writer(filtered_posts, step_id=step_id)
 

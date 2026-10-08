@@ -21,11 +21,10 @@ from their recorded provenance.
 """
 
 import logging
-from contextlib import contextmanager
 from pathlib import Path
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from mourat.collectors.seed_expander import SeedExpander
 from mourat.data_models import (
@@ -50,30 +49,11 @@ from mourat.processors.influence_assessor import InfluenceAssessor
 from mourat.resolvers.paper_resolver import PaperResolver
 from mourat.resolvers.seed_resolver import SeedResolver
 from mourat.utils.common import get_config_path
+from mourat.utils.config import read_enabled
 
 logger = logging.getLogger(__name__)
 
 CONFIG_NAME = "config_collect_influential_papers_from_seeds"
-
-
-@contextmanager
-def omegaconf_open_dict(cfg: DictConfig):
-    """Temporarily unseal a struct-mode DictConfig so keys can be deleted."""
-    old = OmegaConf.is_struct(cfg)
-    OmegaConf.set_struct(cfg, False)
-    try:
-        yield cfg
-    finally:
-        OmegaConf.set_struct(cfg, old)
-
-
-def _read_enabled(writer_cfg: DictConfig) -> bool:
-    """Read the writer's enabled flag without mutating the struct-mode config."""
-    enabled = writer_cfg.get("enabled", False)
-    if enabled and "enabled" in writer_cfg:
-        with omegaconf_open_dict(writer_cfg):
-            del writer_cfg["enabled"]
-    return bool(enabled)
 
 
 def _retrieve_seed_items(conn, cfg: DictConfig) -> ContentItemCollection:
@@ -315,7 +295,7 @@ def collect_influential_papers_from_seeds_main(cfg: DictConfig) -> None:
 
     step_id = "9"
     db_writer_cfg = cfg.db_writer.copy()
-    if _read_enabled(db_writer_cfg):
+    if read_enabled(db_writer_cfg):
         conn = create_connection(db_path)
         try:
             db_writer = hydra.utils.instantiate(db_writer_cfg)(
@@ -326,7 +306,7 @@ def collect_influential_papers_from_seeds_main(cfg: DictConfig) -> None:
             conn.close()
 
     jsonl_writer_cfg = cfg.jsonl_writer.copy()
-    if _read_enabled(jsonl_writer_cfg):
+    if read_enabled(jsonl_writer_cfg):
         jsonl_writer = hydra.utils.instantiate(jsonl_writer_cfg)(monitoring_handler)
         jsonl_writer(filtered, step_id=step_id)
 

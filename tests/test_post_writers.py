@@ -103,6 +103,25 @@ def test_db_writer_skips_existing_post_without_updating_it(db_conn):
         ).fetchone()[0]
         == 1
     )
+    assert "skipped existing: 1" in handler.calls[-1][1]
+
+
+def test_db_writer_reports_insert_errors_instead_of_counting_them_as_duplicates(
+    db_conn, monkeypatch, caplog
+):
+    from mourat.database import content_item as ci
+
+    def fail_insert(*args, **kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(ci, "create_content_item", fail_insert)
+    handler = _Handler()
+    writer = PostContentItemDbWriter(handler, conn=db_conn)
+
+    writer(ScoredRedditPostCollection(posts=[_scored_post()]), step_id="8")
+
+    assert "disk unavailable" in caplog.text
+    assert "failed inserts: 1" in handler.calls[-1][1]
 
 
 def test_jsonl_writer_appends_post_score_context_and_relevance(tmp_path):

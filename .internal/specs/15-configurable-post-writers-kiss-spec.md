@@ -66,6 +66,10 @@ The two writer branches are independent. Each writer is a pass-through `Function
 | `config/db_writer/posts.yaml` | New: configure Reddit post DB writer, disabled by default |
 | `config/jsonl_writer/posts.yaml` | New: configure Reddit post JSONL writer, disabled by default |
 | `config/config_collect_posts.yaml` | Modified: compose writer configs and define the JSONL output path |
-| `mourat/scripts/collect_posts.py` | Modified: replace hardcoded DB save with independently enabled writer stages |
+| `mourat/utils/config.py` | New: centralize Hydra writer enable-flag handling |
+| `mourat/scripts/collect_posts.py` | Modified: replace hardcoded DB save with independently enabled writer stages and use shared config helper |
+| `mourat/scripts/collect_newest_papers.py` | Modified: use shared config helper |
+| `mourat/scripts/collect_influential_papers_from_scratch.py` | Modified: use shared config helper |
+| `mourat/scripts/collect_influential_papers_from_seeds.py` | Modified: use shared config helper |
 | `tests/test_post_writers.py` | New: test post DB and JSONL writer behavior |
 | `tests/test_collect_posts_writers.py` | New: test writer enablement, default flags, and filtered collection handoff |

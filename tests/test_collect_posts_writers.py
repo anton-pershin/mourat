@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 
 from mourat.data_models import ScoredRedditPostCollection
 from mourat.scripts.collect_posts import _write_posts
+from mourat.utils.config import read_enabled
 
 
 @pytest.mark.parametrize(
@@ -18,6 +19,7 @@ def test_writer_enable_flags_write_only_to_enabled_outputs(
 ):
     import mourat.scripts.collect_posts as script
 
+    monkeypatch.setattr(script, "read_enabled", read_enabled)
     filtered = ScoredRedditPostCollection(posts=[])
     calls = []
 
@@ -27,7 +29,7 @@ def test_writer_enable_flags_write_only_to_enabled_outputs(
 
     conn = FakeConnection()
     monkeypatch.setattr(script, "create_connection", lambda path: conn)
-    monkeypatch.setattr(script, "_read_enabled", lambda cfg: bool(cfg.enabled))
+    monkeypatch.setattr(script, "read_enabled", read_enabled)
 
     class FakeWriter:
         def __init__(self, kind):
@@ -57,6 +59,17 @@ def test_writer_enable_flags_write_only_to_enabled_outputs(
         for kind, enabled in (("db", db_enabled), ("jsonl", jsonl_enabled))
         if enabled
     ]
+
+
+def test_read_enabled_removes_flag_from_struct_config_and_restores_struct_mode():
+    from omegaconf import OmegaConf
+
+    config = OmegaConf.create({"enabled": True, "_target_": "some.Writer"})
+    OmegaConf.set_struct(config, True)
+
+    assert read_enabled(config) is True
+    assert "enabled" not in config
+    assert OmegaConf.is_struct(config) is True
 
 
 def test_post_writer_configs_compose_disabled_by_default():
