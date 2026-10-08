@@ -164,6 +164,12 @@ class PostSlopClassifier(
         n_batches = len(batches)
         for b_i, batch in enumerate(batches, 1):
             t_batch = time.monotonic()
+            logger.info(
+                "step 3 | slop batch %d/%d start | %d posts",
+                b_i,
+                n_batches,
+                len(batch),
+            )
             try:
                 run_result: AgentRunResult = self.agent.run_sync(
                     self._build_batch_prompt(batch)
@@ -172,16 +178,16 @@ class PostSlopClassifier(
             except UnexpectedModelBehavior:
                 # Fail open: keep every post of the failed batch.
                 logger.warning(
-                    "Slop classification failed for batch %d/%d (%d posts); "
-                    "keeping all posts of the batch (fail-open)",
+                    "step 3 | slop batch %d/%d failed | %d posts | %.2fs | keeping all (fail-open)",
                     b_i,
                     n_batches,
                     len(batch),
+                    time.monotonic() - t_batch,
                 )
                 continue
 
-            logger.debug(
-                "classify slop batch %d/%d | %d posts | %.2fs",
+            logger.info(
+                "step 3 | slop batch %d/%d done | %d posts | %.2fs",
                 b_i,
                 n_batches,
                 len(batch),

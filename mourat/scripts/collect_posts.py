@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 CONFIG_NAME = "config_collect_posts"
 
 
+def _log_post_counts(step_id: str, stage: str, before: int, after: int) -> None:
+    logger.info(
+        "step %s | %s | posts in: %d, posts out: %d, filtered: %d",
+        step_id,
+        stage,
+        before,
+        after,
+        before - after,
+    )
+
+
 def _write_posts(
     cfg: DictConfig,
     monitoring_handler: MonitoringHandler,
@@ -74,12 +85,18 @@ def collect_posts_main(cfg: DictConfig) -> None:
     )
     step_id = "1"
     raw_posts: RedditPostCollection = collector({}, step_id=step_id)
+    logger.info(
+        "step %s | RedditCollector | collected %d posts", step_id, len(raw_posts.posts)
+    )
 
     # Step 2: Heuristic slop filter
     heuristic_slop_filter = hydra.utils.instantiate(cfg.slop_filter)(monitoring_handler)
     step_id = "2"
     heuristic_posts: RedditPostCollection = heuristic_slop_filter(
         raw_posts, step_id=step_id
+    )
+    _log_post_counts(
+        step_id, "HeuristicSlopFilter", len(raw_posts.posts), len(heuristic_posts.posts)
     )
 
     # Step 3: Slop classification
@@ -89,6 +106,11 @@ def collect_posts_main(cfg: DictConfig) -> None:
     )
     step_id = "3"
     classified_posts = slop_classifier(heuristic_posts, step_id=step_id)
+    logger.info(
+        "step %s | PostSlopClassifier | classified %d posts",
+        step_id,
+        len(classified_posts.posts),
+    )
 
     # Step 4: Slop verdict filter
     slop_verdict_filter = hydra.utils.instantiate(cfg.slop_verdict_filter)(
@@ -96,6 +118,9 @@ def collect_posts_main(cfg: DictConfig) -> None:
     )
     step_id = "4"
     posts: RedditPostCollection = slop_verdict_filter(classified_posts, step_id=step_id)
+    _log_post_counts(
+        step_id, "SlopFilter", len(classified_posts.posts), len(posts.posts)
+    )
 
     # Step 5: Enrich
     enrichment_llm: Model = hydra.utils.instantiate(cfg.enrichment_llm)
@@ -104,6 +129,9 @@ def collect_posts_main(cfg: DictConfig) -> None:
     )
     step_id = "5"
     enriched_posts = enricher(posts, step_id=step_id)
+    _log_post_counts(
+        step_id, "WebEnricher", len(posts.posts), len(enriched_posts.posts)
+    )
 
     # Step 5.5: Load research attributes from database
     conn = create_connection(db_path)
@@ -164,12 +192,21 @@ def collect_posts_main(cfg: DictConfig) -> None:
     )
     step_id = "6"
     scored_posts: ScoredRedditPostCollection = scorer(enriched_posts, step_id=step_id)
+    _log_post_counts(
+        step_id,
+        "PostContentItemScorer",
+        len(enriched_posts.posts),
+        len(scored_posts.posts),
+    )
 
     # Step 7: Filter by score
     score_filter = hydra.utils.instantiate(cfg.score_filter)(monitoring_handler)
     step_id = "7"
     filtered_posts: ScoredRedditPostCollection = score_filter(
         scored_posts, step_id=step_id
+    )
+    _log_post_counts(
+        step_id, "PostScoreFilter", len(scored_posts.posts), len(filtered_posts.posts)
     )
 
     # Step 8: Write independently configured outputs.

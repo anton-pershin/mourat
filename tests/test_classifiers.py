@@ -80,6 +80,24 @@ def _echo_verdict_model(calls: list, slop: bool = True) -> FunctionModel:
     return FunctionModel(model_fn)
 
 
+def test_logs_each_batch_at_info_level(caplog):
+    calls = []
+    classifier = PostSlopClassifier(
+        monitoring_handler=_make_handler(),
+        model=_echo_verdict_model(calls),
+        batch_size=2,
+        max_text_chars=500,
+    )
+
+    with caplog.at_level("INFO", logger="mourat.classifiers"):
+        classifier(_make_collection(5), "classify")
+
+    messages = [r.getMessage() for r in caplog.records if "slop batch" in r.getMessage()]
+    assert len(messages) == 6
+    assert "1/3 start" in messages[0] and "1/3 done" in messages[1]
+    assert "3/3 start" in messages[-2] and "3/3 done" in messages[-1]
+
+
 class TestPostSlopClassifier:
     def test_marks_each_post_with_binary_verdict(self):
         handler = _make_handler()
