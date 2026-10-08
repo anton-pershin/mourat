@@ -3,21 +3,20 @@ _partial_: true  # expect positional argument: monitoring_handler
 
 # Subreddits to collect posts from
 subreddits:
-  - "Anthropic"
-  - "OpenAI"
   - "singularity"
   - "accelerate"
   - "LocalLLaMA"
   - "MachineLearning"
   - "computervision"
+  - "CUDA"
 
 # Time window for recent posts
 time_window:
   hours: 24
 
 # Reddit API settings
-limit_per_subreddit: 100
-max_posts_per_subreddit: 50
+limit_per_subreddit: 500
+max_posts_per_subreddit: 20
 
 # Filter: skip posts with no text (default: true)
 # Set to false to also collect link-only posts

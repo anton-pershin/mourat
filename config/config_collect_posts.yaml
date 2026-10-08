@@ -90,7 +90,7 @@ scoring:
   rq_list: []
   tc_list: []
   topic_list: []
-  min_score: 50
+  min_score: 60
   agent:
     timeout: 300
     retries: 3
