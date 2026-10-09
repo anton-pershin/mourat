@@ -117,7 +117,7 @@ Components:
 | `mourat/data_models.py` | Modified: `influence_score` field on `RedditPostInfo` and `ScoredRedditPost` |
 | `mourat/scripts/calibrate_subreddit_stats.py` | Modified: `percentiles` parameter in `_compute_stats` and config plumbing |
 | `mourat/scripts/collect_posts.py` | Modified: steps 1.5/1.6 wiring |
-| `mourat/processors/content_item_scorer.py` | Modified: carry `influence_score` in the post binding |
+| `mourat/processors/content_item_scorer.py` | Not modified: the score travels because `ScoredRedditPost.post` references the same `RedditPostInfo` instance the assessor mutated; if the scorer binding ever copies posts, `influence_score` must be re-read explicitly |
 | `mourat/writers/post_writers.py` | Modified: both writers |
 | `tests/test_calibrate_subreddit_stats.py` | Modified: T1–T4 |
 | `tests/test_post_writers.py` / `tests/test_collect_posts_writers.py` | Modified: T10, T11 |

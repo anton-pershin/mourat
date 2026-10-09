@@ -230,6 +230,23 @@ def test_jsonl_writer_includes_influence_score(tmp_path):
     assert record["score"] == 60
 
 
+def test_jsonl_writer_falls_back_to_clip_without_influence(tmp_path):
+    # T11 (R7, B1): influence_score None -> legacy min(100, score), not null.
+    from mourat.data_models import ScoredRedditPostCollection
+    from mourat.writers.post_writers import PostJsonlWriter
+
+    path = tmp_path / "posts.jsonl"
+    writer = PostJsonlWriter(_Handler(), output_path=str(path))
+    writer(
+        ScoredRedditPostCollection(
+            posts=[_make_scored(score=125, influence_score=None)]
+        ),
+        step_id="8",
+    )
+    record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["influence_score"] == 100
+
+
 # --- Part B: assessor -> filter integration (T13) ---
 
 

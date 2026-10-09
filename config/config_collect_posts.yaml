@@ -68,6 +68,12 @@ post_influence:
   enabled: true
   min_influence: 50
   references: {}  # subreddit -> reference level, from the calibration script output
+  assessor:
+    _target_: mourat.processors.post_influence.PostInfluenceAssessor
+    references: ${post_influence.references}
+  filter:
+    _target_: mourat.processors.post_influence.PostInfluenceFilter
+    min_influence: ${post_influence.min_influence}
 
 # Component configs
 enrichment:

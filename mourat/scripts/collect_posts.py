@@ -92,19 +92,13 @@ def collect_posts_main(cfg: DictConfig) -> None:
     # Step 1.5/1.6: normalized influence assessment and filter (spec 17)
     post_influence_cfg = cfg.post_influence
     if read_enabled(post_influence_cfg):
-        assessor = hydra.utils.instantiate(
-            {
-                "_target_": "mourat.processors.post_influence.PostInfluenceAssessor",
-                "references": post_influence_cfg.references,
-            }
-        )(monitoring_handler)
+        assessor = hydra.utils.instantiate(post_influence_cfg.assessor)(
+            monitoring_handler
+        )
         raw_posts = assessor(raw_posts, step_id="1.5")
-        influence_filter = hydra.utils.instantiate(
-            {
-                "_target_": "mourat.processors.post_influence.PostInfluenceFilter",
-                "min_influence": post_influence_cfg.min_influence,
-            }
-        )(monitoring_handler)
+        influence_filter = hydra.utils.instantiate(post_influence_cfg.filter)(
+            monitoring_handler
+        )
         filtered_raw = influence_filter(raw_posts, step_id="1.6")
         _log_post_counts(
             "1.6", "PostInfluenceFilter", len(raw_posts.posts), len(filtered_raw.posts)
