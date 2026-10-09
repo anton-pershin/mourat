@@ -85,7 +85,11 @@ class PostContentItemDbWriter(
                     url=post.url,
                     published_at=post.date,
                     authors=post.author,
-                    influence_score=min(100, post.score),
+                    influence_score=(
+                        post.influence_score
+                        if post.influence_score is not None
+                        else min(100, post.score)
+                    ),
                 )
             except Exception:
                 failed_inserts += 1
@@ -144,6 +148,11 @@ class PostJsonlWriter(Function[ScoredRedditPostCollection, ScoredRedditPostColle
                     "url": post.url,
                     "text": post.text,
                     "score": post.score,
+                    "influence_score": (
+                        post.influence_score
+                        if post.influence_score is not None
+                        else min(100, post.score)
+                    ),
                     "additional_context": scored.additional_context,
                     "relevance_scores": [
                         entry.model_dump() for entry in scored.relevance_scores

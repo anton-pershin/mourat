@@ -89,6 +89,22 @@ def collect_posts_main(cfg: DictConfig) -> None:
         "step %s | RedditCollector | collected %d posts", step_id, len(raw_posts.posts)
     )
 
+    # Step 1.5/1.6: normalized influence assessment and filter (spec 17)
+    post_influence_cfg = cfg.post_influence
+    if read_enabled(post_influence_cfg):
+        assessor = hydra.utils.instantiate(post_influence_cfg.assessor)(
+            monitoring_handler
+        )
+        raw_posts = assessor(raw_posts, step_id="1.5")
+        influence_filter = hydra.utils.instantiate(post_influence_cfg.filter)(
+            monitoring_handler
+        )
+        filtered_raw = influence_filter(raw_posts, step_id="1.6")
+        _log_post_counts(
+            "1.6", "PostInfluenceFilter", len(raw_posts.posts), len(filtered_raw.posts)
+        )
+        raw_posts = filtered_raw
+
     # Step 2: Heuristic slop filter
     heuristic_slop_filter = hydra.utils.instantiate(cfg.slop_filter)(monitoring_handler)
     step_id = "2"

@@ -55,8 +55,14 @@ def _collect_scores(
     return scores
 
 
-def _compute_stats(scores: list[int], min_sample: int) -> dict:
-    """Compute the reference statistics or mark the sample insufficient."""
+def _compute_stats(
+    scores: list[int], min_sample: int, percentiles: list[float] | None = None
+) -> dict:
+    """Compute the reference statistics or mark the sample insufficient.
+
+    `percentiles` (each in [0, 1]) adds nearest-rank keys pXX (e.g. p70)
+    on top of the fixed p10/p90 diagnostics.
+    """
     n = len(scores)
     if n < min_sample:
         return {"insufficient": True, "n": n}
@@ -64,7 +70,7 @@ def _compute_stats(scores: list[int], min_sample: int) -> dict:
     median = float(
         sum(ordered[n // 2 - 1 : n // 2 + 1]) / 2 if n % 2 == 0 else ordered[n // 2]
     )
-    return {
+    stats = {
         "n": n,
         "median": median,
         "mean": sum(ordered) / n,
@@ -72,6 +78,9 @@ def _compute_stats(scores: list[int], min_sample: int) -> dict:
         "p90": _nearest_rank(ordered, 0.9),
         "max": ordered[-1],
     }
+    for p in percentiles or []:
+        stats[f"p{round(p * 100)}"] = _nearest_rank(ordered, p)
+    return stats
 
 
 def _format_window(time_window: dict) -> str:
@@ -149,7 +158,9 @@ def calibrate_subreddit_stats_main(cfg: DictConfig) -> None:
             cfg.sample_limit,
             now_utc=time.time(),
         )
-        stats = _compute_stats(scores, cfg.min_sample)
+        stats = _compute_stats(
+            scores, cfg.min_sample, percentiles=list(cfg.get("percentiles", []))
+        )
         stats_by_subreddit[subreddit_name] = stats
         if "median" in stats:
             logger.info(

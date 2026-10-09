@@ -224,6 +224,7 @@ class RedditPostInfo(BaseModel):
     url: str
     text: str = ""
     score: int = 0
+    influence_score: int | None = None
 
 
 class RedditPostCollection(BaseModel):
