@@ -1,9 +1,7 @@
 """Tests for the subreddit stats calibration script (spec 16)."""
 
-import textwrap
 from pathlib import Path
 
-import pytest
 from omegaconf import OmegaConf
 
 from mourat.scripts.calibrate_subreddit_stats import (
@@ -94,6 +92,22 @@ def test_compute_stats_insufficient_sample_has_no_median():
     assert stats == {"insufficient": True, "n": 5}
 
 
+def test_insufficient_and_sufficient_subreddits_in_one_run():
+    # T3 (R4, B4): one run over two subreddits — the one below min_sample
+    # is recorded as insufficient, the other still gets a full record.
+    small = _make_subreddit([(NOW - i * 60, i + 1) for i in range(5)])
+    large = _make_subreddit([(NOW - i * 60, i + 1) for i in range(30)])
+    window = {"hours": 24}
+    stats_by_subreddit = {
+        "SmallSub": _compute_stats(_collect_scores(small, window, 100, NOW), 30),
+        "LargeSub": _compute_stats(_collect_scores(large, window, 100, NOW), 30),
+    }
+    assert stats_by_subreddit["SmallSub"] == {"insufficient": True, "n": 5}
+    assert stats_by_subreddit["LargeSub"]["n"] == 30
+    assert stats_by_subreddit["LargeSub"]["median"] == 15.5
+    assert "insufficient" not in stats_by_subreddit["LargeSub"]
+
+
 def test_append_or_write_overwrite_replaces_existing_file(tmp_path):
     # T4 (R6, B2).
     path = tmp_path / "stats.yaml"
@@ -167,5 +181,9 @@ def test_hydra_config_composes_with_expected_keys():
     assert cfg.min_sample == 30
     assert cfg.mode in ("overwrite", "append")
     assert cfg.output_path
-    assert cfg.user_settings.reddit.client_id is not None or True  # env-backed
+    # Credentials come from user_settings.reddit, env-interpolated; the key
+    # must exist and resolve through the interpolation chain (the env var
+    # itself may legitimately be unset in a test shell).
+    assert "reddit" in cfg.user_settings
+    assert "client_id" in cfg.user_settings.reddit
     assert isinstance(cfg.sample_limit, int)

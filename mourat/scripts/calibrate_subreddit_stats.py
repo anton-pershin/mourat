@@ -12,6 +12,7 @@ No database access, no LLM calls: a measurement tool, not a pipeline step.
 
 import datetime
 import logging
+import math
 import time
 from pathlib import Path
 
@@ -30,8 +31,6 @@ CONFIG_NAME = "config_calibrate_subreddit_stats"
 
 def _nearest_rank(sorted_values: list[int], fraction: float) -> int:
     """Nearest-rank percentile of an ascending-sorted list."""
-    import math
-
     rank = max(1, math.ceil(fraction * len(sorted_values)))
     return sorted_values[rank - 1]
 
@@ -76,13 +75,20 @@ def _compute_stats(scores: list[int], min_sample: int) -> dict:
 
 
 def _format_window(time_window: dict) -> str:
-    parts = []
-    for unit in ("days", "hours", "minutes"):
-        if unit in time_window:
-            value = time_window[unit]
-            parts.append(
-                f"{value}{'d' if unit == 'days' else 'h' if unit == 'hours' else 'm'}"
-            )
+    unit_symbols = {
+        "weeks": "w",
+        "days": "d",
+        "hours": "h",
+        "minutes": "m",
+        "seconds": "s",
+        "milliseconds": "ms",
+        "microseconds": "us",
+    }
+    parts = [
+        f"{time_window[unit]}{symbol}"
+        for unit, symbol in unit_symbols.items()
+        if unit in time_window
+    ]
     return "+".join(parts) if parts else str(dict(time_window))
 
 
@@ -162,10 +168,10 @@ def calibrate_subreddit_stats_main(cfg: DictConfig) -> None:
                 cfg.min_sample,
             )
 
-        text_for_monitoring = "\n".join(
-            f"- r/{name}: {stats}" for name, stats in stats_by_subreddit.items()
-        )
-        monitoring_handler("1", text_for_monitoring)
+    text_for_monitoring = "\n".join(
+        f"- r/{name}: {stats}" for name, stats in stats_by_subreddit.items()
+    )
+    monitoring_handler("1", text_for_monitoring)
 
     block = _render_block(
         stats_by_subreddit,
