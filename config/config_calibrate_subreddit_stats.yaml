@@ -14,6 +14,7 @@ time_window:
 
 sample_limit: 1000
 min_sample: 30
+percentiles: []
 output_path: ${result_dir}/subreddit_stats.yaml
 mode: overwrite
 

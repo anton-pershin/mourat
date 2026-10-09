@@ -47,6 +47,29 @@ def test_compute_stats_full_record_matches_reference_statistics():
     assert "insufficient" not in stats
 
 
+def test_compute_stats_with_extra_percentiles():
+    # T1 of spec 17 (R1, R2): p70/p80 nearest-rank on 1..100.
+    scores = list(range(1, 101))
+    stats = _compute_stats(scores, min_sample=30, percentiles=[0.7, 0.8])
+    assert stats["p70"] == sorted(scores)[69]  # ceil(0.7*100) = 70th
+    assert stats["p80"] == sorted(scores)[79]  # ceil(0.8*100) = 80th
+    # existing keys unchanged
+    assert stats["median"] == 50.5
+    assert stats["max"] == 100
+
+
+def test_compute_stats_default_percentiles_backward_compatible():
+    # T2 of spec 17 (R1): no percentiles -> exactly the spec-16 keys.
+    stats = _compute_stats(list(range(1, 31)), min_sample=30)
+    assert set(stats) == {"n", "median", "mean", "p10", "p90", "max"}
+
+
+def test_compute_stats_insufficient_sample_with_percentiles():
+    # T3 of spec 17 (R2): insufficient stays unchanged with percentiles set.
+    stats = _compute_stats([3, 1, 2, 1, 5], min_sample=30, percentiles=[0.7])
+    assert stats == {"insufficient": True, "n": 5}
+
+
 def test_compute_stats_even_count_median_not_truncated():
     # T7 (R5): median of 1..30 is 15.5, not truncated to 15.
     stats = _compute_stats(list(range(1, 31)), min_sample=30)

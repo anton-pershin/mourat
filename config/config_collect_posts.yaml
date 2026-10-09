@@ -63,6 +63,12 @@ score_filter:
   _partial_: true  # expect positional argument: monitoring_handler
   score_threshold: ${scoring.min_score}
 
+# Normalized influence (spec 17): assessor + filter right after collection
+post_influence:
+  enabled: true
+  min_influence: 50
+  references: {}  # subreddit -> reference level, from the calibration script output
+
 # Component configs
 enrichment:
   system_prompt: |
