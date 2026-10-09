@@ -80,15 +80,15 @@ Key functions in `mourat/scripts/calibrate_subreddit_stats.py`:
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests (`tests/test_calibrate_subreddit_stats.py`, T1–T8)
-2. [ ] Run all the tests and ensure that they fail
-3. [ ] Implement `_collect_scores` with the windowed-iteration logic copied from `RedditPostCollector` (no `require_text`, no top-K)
-4. [ ] Implement `_compute_stats` (median, mean, p10, p90, max, `insufficient` gate)
-5. [ ] Implement `_render_block` and `_append_or_write` (overwrite/append modes)
-6. [ ] Implement `calibrate_subreddit_stats_main` (PRAW client, per-subreddit loop, logging via `MonitoringHandler`)
-7. [ ] Add `config/config_calibrate_subreddit_stats.yaml` with the R2 keys and defaults
-8. [ ] Run all the tests and ensure that they pass
-9. [ ] Run the linter and the existing test suite to confirm no regressions
+1. [x] Write the tests (`tests/test_calibrate_subreddit_stats.py`, T1–T8)
+2. [x] Run all the tests and ensure that they fail
+3. [x] Implement `_collect_scores` with the windowed-iteration logic copied from `RedditPostCollector` (no `require_text`, no top-K)
+4. [x] Implement `_compute_stats` (median, mean, p10, p90, max, `insufficient` gate)
+5. [x] Implement `_render_block` and `_append_or_write` (overwrite/append modes)
+6. [x] Implement `calibrate_subreddit_stats_main` (PRAW client, per-subreddit loop, logging via `MonitoringHandler`)
+7. [x] Add `config/config_calibrate_subreddit_stats.yaml` with the R2 keys and defaults
+8. [x] Run all the tests and ensure that they pass
+9. [x] Run the linter and the existing test suite to confirm no regressions
 
 #### 3.4 Modification summary
 

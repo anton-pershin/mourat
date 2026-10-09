@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+
+subreddits:
+  - MachineLearning
+  - LocalLLaMA
+
+# kwargs for timedelta, same semantics as RedditPostCollector's time_window
+time_window:
+  hours: 24
+
+sample_limit: 1000
+min_sample: 30
+output_path: ${result_dir}/subreddit_stats.yaml
+mode: overwrite
+
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
