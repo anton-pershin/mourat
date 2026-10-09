@@ -97,16 +97,16 @@ Components:
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests (T1–T13: extend `tests/test_calibrate_subreddit_stats.py`, add `tests/test_post_influence.py`, extend writer/scorer/config tests)
-2. [ ] Run all the tests and ensure that they fail
-3. [ ] Part A: add `percentiles` to the calibration script and its config
-4. [ ] Add `influence_score` to `RedditPostInfo` and `ScoredRedditPost`
-5. [ ] Implement `PostInfluenceAssessor` and `PostInfluenceFilter`
-6. [ ] Wire steps 1.5/1.6 into `collect_posts_main` behind `post_influence.enabled`; carry the score through the scorer binding
-7. [ ] Update both writers (normalized value or legacy clip)
-8. [ ] Update both configs
-9. [ ] Run all the tests and ensure that they pass
-10. [ ] Run black and the full test suite to confirm no regressions
+1. [x] Write the tests (T1–T13: extend `tests/test_calibrate_subreddit_stats.py`, add `tests/test_post_influence.py`, extend writer/scorer/config tests)
+2. [x] Run all the tests and ensure that they fail
+3. [x] Part A: add `percentiles` to the calibration script and its config
+4. [x] Add `influence_score` to `RedditPostInfo` and `ScoredRedditPost`
+5. [x] Implement `PostInfluenceAssessor` and `PostInfluenceFilter`
+6. [x] Wire steps 1.5/1.6 into `collect_posts_main` behind `post_influence.enabled`; carry the score through the scorer binding
+7. [x] Update both writers (normalized value or legacy clip)
+8. [x] Update both configs
+9. [x] Run all the tests and ensure that they pass
+10. [x] Run black and the full test suite to confirm no regressions
 
 #### 3.4 Modification summary
 
