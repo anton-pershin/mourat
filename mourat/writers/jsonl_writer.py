@@ -48,7 +48,7 @@ class JsonlWriter(Function[ScoredPaperCollection, ScoredPaperCollection]):
         }
 
     def _run(self, data: ScoredPaperCollection) -> tuple[ScoredPaperCollection, str]:
-        with open(self.output_path, "a", encoding="utf-8") as f:
+        with open(self.output_path, "w", encoding="utf-8") as f:
             for sp in data.papers:
                 f.write(json.dumps(self._record(sp), ensure_ascii=False) + "\n")
 
