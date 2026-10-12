@@ -693,7 +693,7 @@ class TestJsonlWriter:
         finally:
             os.unlink(path)
 
-    def test_appends_across_runs(self):
+    def test_overwrites_across_runs(self):
         handler = _make_monitoring_handler()
         with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
             path = f.name
@@ -706,9 +706,8 @@ class TestJsonlWriter:
                 ScoredPaperCollection(papers=[_make_scored_paper(70, title="B")]), "4"
             )
             lines = open(path, encoding="utf-8").read().strip().split("\n")
-            assert len(lines) == 2
-            assert json.loads(lines[0])["title"] == "A"
-            assert json.loads(lines[1])["title"] == "B"
+            assert len(lines) == 1
+            assert json.loads(lines[0])["title"] == "B"
         finally:
             os.unlink(path)
 

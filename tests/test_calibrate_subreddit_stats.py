@@ -201,7 +201,8 @@ def test_hydra_config_composes_with_expected_keys():
     assert len(cfg.subreddits) > 0
     assert "hours" in cfg.time_window or "days" in cfg.time_window
     assert cfg.sample_limit == 1000
-    assert cfg.min_sample == 30
+    # Default lowered from 30 to 10 in the 2026-10-12 config refresh.
+    assert cfg.min_sample == 10
     assert cfg.mode in ("overwrite", "append")
     assert cfg.output_path
     # Credentials come from user_settings.reddit, env-interpolated; the key

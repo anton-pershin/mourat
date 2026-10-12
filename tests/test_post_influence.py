@@ -51,7 +51,8 @@ def test_calibration_config_has_percentiles_default():
     configs_dir = Path(__file__).resolve().parent.parent / "config"
     with initialize_config_dir(config_dir=str(configs_dir), version_base="1.3"):
         cfg = compose(config_name="config_calibrate_subreddit_stats")
-    assert cfg.percentiles == []  # T4 (R1)
+    # Default was updated (2026-10-12 config refresh) to the calibrated set.
+    assert cfg.percentiles == [0.1, 0.7, 0.8, 0.9]  # T4 (R1)
 
 
 # --- Part B: assessor ---
@@ -154,7 +155,15 @@ def test_collect_posts_config_composes_with_post_influence():
     configs_dir = Path(__file__).resolve().parent.parent / "config"
     with initialize_config_dir(config_dir=str(configs_dir), version_base="1.3"):
         cfg = compose(config_name="config_collect_posts")
-    assert cfg.post_influence.references == {}
+    # Default references were filled in from the calibration output
+    # (2026-10-12 config refresh).
+    assert cfg.post_influence.references == {
+        "singularity": 250,
+        "accelerate": 180,
+        "LocalLLaMA": 20,
+        "MachineLearning": 3,
+        "computervision": 5,
+    }
     assert cfg.post_influence.min_influence == 50
     assert cfg.post_influence.enabled is True
 
