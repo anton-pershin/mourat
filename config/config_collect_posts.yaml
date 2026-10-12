@@ -67,12 +67,20 @@ score_filter:
 post_influence:
   enabled: true
   min_influence: 50
-  references: {}  # subreddit -> reference level, from the calibration script output
+  references: {  # subreddit -> reference level, from the calibration script output
+    "singularity": 250,
+    "accelerate": 180,
+    "LocalLLaMA": 20,
+    "MachineLearning": 3,
+    "computervision": 5
+  }
   assessor:
     _target_: mourat.processors.post_influence.PostInfluenceAssessor
+    _partial_: true  # expect positional argument: monitoring_handler
     references: ${post_influence.references}
   filter:
     _target_: mourat.processors.post_influence.PostInfluenceFilter
+    _partial_: true  # expect positional argument: monitoring_handler
     min_influence: ${post_influence.min_influence}
 
 # Component configs
@@ -82,10 +90,10 @@ enrichment:
 
     For each post provided, your task is to:
     1. Determine if the post needs enrichment (e.g., post mentioning a topic that needs more context)
-    2. If enrichment is needed, use the available tools to gather self-contained facts obtained from the web that are NOT already evident in the post:
+    2. If enrichment is needed, use the available tools to gather self-contained facts with supporting URLs obtained from the web that are NOT already evident in the post:
        - `extract_url`: Fetch and extract the full content of an URL.
        - `web_search`: Find related information online.
-    3. Return a list of additional context points based on the collected self-contained facts. Each point must stand alone, phrased like "X is ...".
+    3. Return a list of additional context points based on the collected self-contained facts and URLs. Each point must stand alone, phrased like "X is ..." and contain a list of URLs supporting the facts. Favor URLs of well-recognized resources like github, wikipedia, huggingface, openai, deepseek etc.
     4. If no enrichment is needed or the web search and web-page fetch yield nothing new, return an empty list.
 
     Be concise and focused. Only enrich posts that genuinely need it.

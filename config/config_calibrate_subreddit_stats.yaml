@@ -5,16 +5,19 @@ defaults:
   - monitoring_handler: via_md_files
 
 subreddits:
-  - MachineLearning
-  - LocalLLaMA
+  - "singularity"
+  - "accelerate"
+  - "LocalLLaMA"
+  - "MachineLearning"
+  - "computervision"
 
 # kwargs for timedelta, same semantics as RedditPostCollector's time_window
 time_window:
-  hours: 24
+  hours: 24 
 
 sample_limit: 1000
-min_sample: 30
-percentiles: []
+min_sample: 10
+percentiles: [0.1, 0.7, 0.8, 0.9]
 output_path: ${result_dir}/subreddit_stats.yaml
 mode: overwrite
 

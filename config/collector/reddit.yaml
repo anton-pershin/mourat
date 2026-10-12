@@ -8,7 +8,6 @@ subreddits:
   - "LocalLLaMA"
   - "MachineLearning"
   - "computervision"
-  - "CUDA"
 
 # Time window for recent posts
 time_window:
