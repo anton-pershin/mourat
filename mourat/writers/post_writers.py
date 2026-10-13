@@ -136,7 +136,7 @@ class PostJsonlWriter(Function[ScoredRedditPostCollection, ScoredRedditPostColle
     def _run(
         self, data: ScoredRedditPostCollection
     ) -> tuple[ScoredRedditPostCollection, str]:
-        with open(self.output_path, "a", encoding="utf-8") as output:
+        with open(self.output_path, "w", encoding="utf-8") as output:
             for scored in data.posts:
                 post = scored.post
                 record = {
