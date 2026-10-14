@@ -6,6 +6,8 @@ import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mourat.clients.openalex import OpenAlexClient
 from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.collectors.arxiv import ArxivPaperCollector
@@ -101,7 +103,10 @@ class TestArxivPaperCollector:
         assert first.announce_type is None  # sample feed has no Announce Type
         assert result.papers[1].title == "Test Paper Two"
 
-    def test_structured_announce_type_is_parsed(self):
+    @pytest.mark.parametrize(
+        "announce_type", ["new", "replace", "cross", "replace-cross"]
+    )
+    def test_structured_announce_type_is_parsed(self, announce_type):
         feed = """<?xml version="1.0"?>
 <rss xmlns:arxiv="http://arxiv.org/schemas/atom"
      xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
@@ -110,12 +115,13 @@ class TestArxivPaperCollector:
       <title>Test Paper</title>
       <link>https://arxiv.org/abs/2401.00001v1</link>
       <description>arXiv:2401.00001v1 [cs.AI] Test Paper\nAnnounce Type: replace\nAbstract: Abstract text</description>
-      <arxiv:announce_type>new</arxiv:announce_type>
+      <arxiv:announce_type>{announce_type}</arxiv:announce_type>
       <dc:creator>J. Smith</dc:creator>
     </item>
   </channel>
 </rss>
 """
+        feed = feed.replace("{announce_type}", announce_type)
         mock_handler = MagicMock()
         mock_response = MagicMock(text=feed)
         mock_client = MagicMock()
@@ -126,10 +132,11 @@ class TestArxivPaperCollector:
             http_client=mock_client,
             api_url="http://example.com/feed",
             mode="newest",
+            only_new_submissions=False,
         )
         result = collector(None, "test")
 
-        assert result.papers[0].announce_type == "new"
+        assert result.papers[0].announce_type == announce_type
 
     @patch("mourat.collectors.arxiv.feedparser.parse")
     def test_newest_mode_filters_non_new_by_default(self, parse_feed, caplog):
