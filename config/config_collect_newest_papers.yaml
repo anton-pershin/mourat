@@ -26,6 +26,7 @@ feeds:
     _partial_: true  # expect positional arguments: monitoring_handler, http_client
     mode: newest
     api_url: https://rss.arxiv.org/rss/cs.LG
+    only_new_submissions: true
 
 # Research attribute ids to collect for (loaded from the database).
 # Leave a list empty to skip that kind of attribute; at least one must resolve.

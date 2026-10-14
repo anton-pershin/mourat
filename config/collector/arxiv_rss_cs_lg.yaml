@@ -2,3 +2,4 @@ _target_: mourat.collectors.arxiv.ArxivPaperCollector
 _partial_: true  # expect positional arguments: monitoring_handler, http_client
 mode: newest
 api_url: https://rss.arxiv.org/rss/cs.LG
+only_new_submissions: true

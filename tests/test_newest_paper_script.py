@@ -82,8 +82,10 @@ class _FakeResponse:
 
 
 SAMPLE_FEED = """<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
   <entry>
+    <arxiv:announce_type>new</arxiv:announce_type>
     <title>KV Cache Trick</title>
     <link href="http://arxiv.org/abs/2401.00001"/>
     <description>arXiv:2401.00001v1 [cs.LG] KV Cache Trick
@@ -92,6 +94,7 @@ Abstract: A method for KV cache optimization</description>
     <published>2024-01-15T00:00:00Z</published>
   </entry>
   <entry>
+    <arxiv:announce_type>new</arxiv:announce_type>
     <title>Unrelated Cooking Study</title>
     <link href="http://arxiv.org/abs/2401.00002"/>
     <description>arXiv:2401.00002v1 [cs.LG] Unrelated Cooking Study

@@ -57,18 +57,21 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [ ] Add tests for structured announce-type parsing and filtering.
-2. [ ] Run the focused tests and confirm that they fail before implementation.
-3. [ ] Add `only_new_submissions`, enabled by default, to each newest-mode feed configuration.
-4. [ ] Read `arxiv_announce_type` and store it on each `PaperCandidate`. Use description parsing as a fallback if the structured field is absent.
-5. [ ] When enabled, keep only candidates with type exactly `new`. When disabled, keep all candidates. Do not apply this option in `most_relevant` mode.
-6. [ ] Include collected, kept, and excluded counts, including how many papers the rule filtered, in both monitoring-handler output and the application log.
-7. [ ] Run the focused tests, full test suite, and project linters.
+1. [x] Add tests in `tests/test_collectors.py` and `tests/test_newest_paper_script.py` for structured announce-type parsing, filtering, counts, configuration, and pipeline wiring.
+2. [x] Run the focused tests and confirm that they fail before implementation.
+3. [x] Set `only_new_submissions: true` in each newest-mode feed configuration.
+4. [x] Read `arxiv_announce_type` and store it on each `PaperCandidate`. Use description parsing as a fallback if the structured field is absent.
+5. [x] When enabled, keep only candidates with type exactly `new`. When disabled, keep all candidates. Do not apply this option in `most_relevant` mode.
+6. [x] Include collected, kept, and excluded counts, including how many papers the rule filtered, in both monitoring-handler output and the application log.
+7. [x] Run the focused tests, full test suite, and project linters.
 
 #### 3.4 Modification summary
 
 | File | Action |
 |------|--------|
 | `mourat/collectors/arxiv.py` | Modify: parse the structured announce-type field, apply the configurable `new`-only filter in `newest` mode, and report collected, kept, and excluded counts in monitoring output and the application log. |
+| `mourat/data_models.py` | Modify: document the structured announce-type values stored on candidates. |
 | `config/config_collect_newest_papers.yaml` | Modify: enable `only_new_submissions` by default for the configured feed. |
+| `config/collector/arxiv_rss_cs_lg.yaml` | Modify: enable `only_new_submissions` by default for the RSS collector config. |
 | `tests/test_collectors.py` | Modify: test structured field parsing, filter behavior, monitoring counts, and unchanged `most_relevant` behavior. |
+| `tests/test_newest_paper_script.py` | Modify: add structured `new` announce types to feed fixtures so pipeline-wiring tests exercise the default filter. |
