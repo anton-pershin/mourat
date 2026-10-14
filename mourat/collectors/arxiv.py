@@ -1,4 +1,5 @@
 import datetime
+import logging
 import re
 from typing import Any, Literal, TypeAlias
 
@@ -14,6 +15,7 @@ ArxivSearchMode: TypeAlias = Literal["newest", "most_relevant"]
 
 _ARXIV_ABS_ID_RE = re.compile(r"/abs/([\d.]+)(?:v\d+)?$")
 _ANNOUNCE_TYPE_RE = re.compile(r"Announce Type: (\w+)")
+logger = logging.getLogger(__name__)
 
 
 def _extract_arxiv_id(link: str) -> str | None:
@@ -28,8 +30,9 @@ def _candidate_from_entry(entry) -> PaperCandidate:
     The feed items carry no per-item date (feedparser's published_parsed is
     the feed-generation date), so publication_date is left None here; the
     affiliation fetcher sets it from the arXiv Atom API's `published`
-    field (first submission date). `announce_type` is kept in-flight for
-    monitoring ("new" / "replace" / "cross").
+    field (first submission date). `announce_type` is read from the structured RSS
+    field and kept in-flight for monitoring ("new", "replace", "cross", or
+    "replace-cross").
     """
     link = entry.link
     title = entry.title.replace("\n", " ")
@@ -37,8 +40,10 @@ def _candidate_from_entry(entry) -> PaperCandidate:
     authors = [
         normalize_author_name(author_data["name"]) for author_data in entry.authors
     ]
-    m = _ANNOUNCE_TYPE_RE.search(entry.description)
-    announce_type = m.group(1).lower() if m else None
+    announce_type = getattr(entry, "arxiv_announce_type", None)
+    if announce_type is None:
+        m = _ANNOUNCE_TYPE_RE.search(entry.description)
+        announce_type = m.group(1).lower() if m else None
 
     return PaperCandidate(
         title=title,
@@ -63,9 +68,11 @@ class ArxivPaperCollector(Function[Any, PaperCandidateCollection]):
         end_date: str | None = None,  # YYYY-MM-DD
         max_results: int | None = None,
         keywords: str | None = None,
+        only_new_submissions: bool = True,
     ) -> None:
         self.http_client = http_client
         self.api_url = api_url
+        self.only_new_submissions = only_new_submissions
         if start_date is None:
             if mode == "most_relevant":
                 raise ValueError(f"Mode '{mode}' implies that start_date is set")
@@ -89,6 +96,21 @@ class ArxivPaperCollector(Function[Any, PaperCandidateCollection]):
 
     def _run(self, data: Any) -> tuple[PaperCandidateCollection, str]:
         output = self.mode_to_handler[self.mode]()
+        collected_count = len(output.papers)
+        excluded_count = 0
+
+        if self.mode == "newest" and self.only_new_submissions:
+            output.papers = [
+                paper for paper in output.papers if paper.announce_type == "new"
+            ]
+            excluded_count = collected_count - len(output.papers)
+            logger.info(
+                "arXiv newest feed: collected %d papers, kept %d, excluded %d by new-only filter",
+                collected_count,
+                len(output.papers),
+                excluded_count,
+            )
+
         text_for_monitoring = (
             "# URL;\n"
             f"{self.api_url}\n\n"
@@ -97,6 +119,12 @@ class ArxivPaperCollector(Function[Any, PaperCandidateCollection]):
             "# Papers\n"
             f"Total {len(output.papers)}"
         )
+        if self.mode == "newest" and self.only_new_submissions:
+            text_for_monitoring += (
+                "\n\n# New-submission filter\n"
+                f"Collected {collected_count}; kept {len(output.papers)}; "
+                f"excluded {excluded_count}"
+            )
 
         return output, text_for_monitoring
 

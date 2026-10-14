@@ -333,8 +333,8 @@ class PaperCandidate(BaseModel):
     announce_type: str | None = Field(
         default=None,
         description=(
-            "In-flight arXiv announce type from the RSS feed: 'new', 'replace' "
-            "or 'cross'; monitoring only, never persisted"
+            "In-flight arXiv RSS announce type ('new', 'replace', 'cross', "
+            "or 'replace-cross'); monitoring only, never persisted"
         ),
     )
     provenance: list[str] = Field(

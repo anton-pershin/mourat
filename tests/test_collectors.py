@@ -2,7 +2,11 @@
 
 import datetime
 import itertools
+import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from mourat.clients.openalex import OpenAlexClient
 from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
@@ -58,6 +62,16 @@ Abstract: Abstract of paper two</description>
 class TestArxivPaperCollector:
     """Tests for ArxivPaperCollector newest mode."""
 
+    @staticmethod
+    def _entry(index, announce_type=None):
+        return SimpleNamespace(
+            title=f"Test Paper {index}",
+            link=f"https://arxiv.org/abs/2401.{index:05d}",
+            description=f"arXiv:2401.{index:05d}v1 [cs.AI] Test Paper {index}\nAbstract: Abstract {index}",
+            authors=[{"name": "J. Smith"}],
+            arxiv_announce_type=announce_type,
+        )
+
     def test_newest_mode_parses_feed(self):
         mock_handler = _make_monitoring_handler()
         mock_response = MagicMock()
@@ -70,6 +84,7 @@ class TestArxivPaperCollector:
             http_client=mock_client,
             api_url="http://example.com/feed",
             mode="newest",
+            only_new_submissions=False,
         )
 
         result = collector(None, "test")  # T1
@@ -88,6 +103,119 @@ class TestArxivPaperCollector:
         assert first.announce_type is None  # sample feed has no Announce Type
         assert result.papers[1].title == "Test Paper Two"
 
+    @pytest.mark.parametrize(
+        "announce_type", ["new", "replace", "cross", "replace-cross"]
+    )
+    def test_structured_announce_type_is_parsed(self, announce_type):
+        feed = """<?xml version="1.0"?>
+<rss xmlns:arxiv="http://arxiv.org/schemas/atom"
+     xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+  <channel>
+    <item>
+      <title>Test Paper</title>
+      <link>https://arxiv.org/abs/2401.00001v1</link>
+      <description>arXiv:2401.00001v1 [cs.AI] Test Paper\nAnnounce Type: replace\nAbstract: Abstract text</description>
+      <arxiv:announce_type>{announce_type}</arxiv:announce_type>
+      <dc:creator>J. Smith</dc:creator>
+    </item>
+  </channel>
+</rss>
+"""
+        feed = feed.replace("{announce_type}", announce_type)
+        mock_handler = MagicMock()
+        mock_response = MagicMock(text=feed)
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        collector = ArxivPaperCollector(
+            monitoring_handler=mock_handler,
+            http_client=mock_client,
+            api_url="http://example.com/feed",
+            mode="newest",
+            only_new_submissions=False,
+        )
+        result = collector(None, "test")
+
+        assert result.papers[0].announce_type == announce_type
+
+    @patch("mourat.collectors.arxiv.feedparser.parse")
+    def test_newest_mode_filters_non_new_by_default(self, parse_feed, caplog):
+        entries = [
+            self._entry(1, "new"),
+            self._entry(2, "replace"),
+            self._entry(3, "cross"),
+            self._entry(4, "replace-cross"),
+            self._entry(5),
+            self._entry(6, "other"),
+        ]
+        parse_feed.return_value = SimpleNamespace(entries=entries)
+        handler = MagicMock()
+        client = MagicMock()
+        client.get.return_value = MagicMock(text="feed")
+        collector = ArxivPaperCollector(
+            monitoring_handler=handler,
+            http_client=client,
+            api_url="http://example.com/feed",
+            mode="newest",
+        )
+
+        with caplog.at_level(logging.INFO, logger="mourat.collectors.arxiv"):
+            result = collector(None, "test")
+
+        assert [paper.announce_type for paper in result.papers] == ["new"]
+        monitor_text = handler.call_args.kwargs["text_for_monitoring"]
+        assert "collected 6" in monitor_text.lower()
+        assert "kept 1" in monitor_text.lower()
+        assert "excluded 5" in monitor_text.lower()
+        assert any(
+            "collected 6 papers" in record.message.lower()
+            and "kept 1" in record.message.lower()
+            and "excluded 5" in record.message.lower()
+            for record in caplog.records
+        )
+
+    @patch("mourat.collectors.arxiv.feedparser.parse")
+    def test_newest_mode_keeps_all_when_filter_disabled(self, parse_feed):
+        announce_types = ["new", "replace", "cross", "replace-cross", None, "other"]
+        entries = [
+            self._entry(index, announce_type)
+            for index, announce_type in enumerate(announce_types, 1)
+        ]
+        parse_feed.return_value = SimpleNamespace(entries=entries)
+        client = MagicMock()
+        client.get.return_value = MagicMock(text="feed")
+        collector = ArxivPaperCollector(
+            monitoring_handler=MagicMock(),
+            http_client=client,
+            api_url="http://example.com/feed",
+            mode="newest",
+            only_new_submissions=False,
+        )
+
+        result = collector(None, "test")
+
+        assert [paper.announce_type for paper in result.papers] == announce_types
+
+    @patch("mourat.collectors.arxiv.feedparser.parse")
+    def test_most_relevant_mode_ignores_new_only_option(self, parse_feed):
+        parse_feed.return_value = SimpleNamespace(
+            entries=[self._entry(1, "new"), self._entry(2, "replace")]
+        )
+        client = MagicMock()
+        client.get.return_value = MagicMock(text="feed")
+        collector = ArxivPaperCollector(
+            monitoring_handler=MagicMock(),
+            http_client=client,
+            api_url="http://example.com/feed",
+            mode="most_relevant",
+            start_date="2024-01-01",
+            only_new_submissions=True,
+        )
+
+        result = collector(None, "test")
+
+        assert len(result.papers) == 2
+
     def test_version_suffix_stripped_from_arxiv_id(self):
         # T2: link carrying a version suffix yields the base id
         feed = SAMPLE_ARXIV_FEED.replace(
@@ -104,6 +232,7 @@ class TestArxivPaperCollector:
             http_client=mock_client,
             api_url="http://example.com/feed",
             mode="newest",
+            only_new_submissions=False,
         )
         result = collector(None, "test")
         assert result.papers[0].arxiv_id == "2401.00001"
@@ -125,6 +254,7 @@ class TestArxivPaperCollector:
             http_client=mock_client,
             api_url="http://example.com/feed",
             mode="newest",
+            only_new_submissions=False,
         )
         result = collector(None, "test")
         assert result.papers[0].announce_type == "replace"
@@ -142,6 +272,7 @@ class TestArxivPaperCollector:
             http_client=mock_client,
             api_url="http://example.com/feed",
             mode="newest",
+            only_new_submissions=False,
         )
         result = collector(None, "test")
         assert result.papers[0].provenance == ["arxiv_rss"]
