@@ -68,11 +68,11 @@ post_influence:
   enabled: true
   min_influence: 50
   references: {  # subreddit -> reference level, from the calibration script output
-    "singularity": 250,
-    "accelerate": 180,
+    "singularity": 100,
+    "accelerate": 60,
     "LocalLLaMA": 20,
     "MachineLearning": 3,
-    "computervision": 5
+    "computervision": 3
   }
   assessor:
     _target_: mourat.processors.post_influence.PostInfluenceAssessor
