@@ -141,20 +141,20 @@ Components:
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests (T1–T19: new `tests/test_hn_clients.py`, `tests/test_hn_pipeline.py`, `tests/test_calibrate_hn_stats.py`; extend writer/config tests)
-2. [ ] Run all the tests and ensure that they fail
-3. [ ] Add HN data models to `mourat/data_models.py`
-4. [ ] Implement `HNAlgoliaClient` (client + tags + numeric filters + pagination + parse)
-5. [ ] Implement `HNPostCollector`
-6. [ ] Implement `HNInfluenceAssessor` and `HNInfluenceFilter` (reuse `compute_influence_score`)
-7. [ ] Implement `calibrate_hn_stats.py` + its config
-8. [ ] Implement `HNContentFetcher` (proxy + trafilatura + drop semantics)
-9. [ ] Implement `HNSummarizer` (LLM, retries, drop after exhaustion)
-10. [ ] Add `HNContentItemScorer` binding + `ScoredHNPost` travel
-11. [ ] Implement `HNScoreFilter` and both writers
-12. [ ] Implement `collect_hn_posts.py` + `config_collect_hn_posts.yaml`
-13. [ ] Run all the tests and ensure that they pass
-14. [ ] Run black on touched files and the full test suite to confirm no regressions
+1. [x] Write the tests (T1–T19: new `tests/test_hn_clients.py`, `tests/test_hn_pipeline.py`, `tests/test_hn_writers.py`, `tests/test_hn_config.py`, `tests/test_calibrate_hn_stats.py`)
+2. [x] Run all the tests and ensure that they fail
+3. [x] Add HN data models to `mourat/data_models.py`
+4. [x] Implement `HNAlgoliaClient` (client + tags + numeric filters + pagination + parse)
+5. [x] Implement `HNPostCollector`
+6. [x] Implement `HNInfluenceAssessor` and `HNInfluenceFilter` (reuse `compute_influence_score`)
+7. [x] Implement `calibrate_hn_stats.py` + its config
+8. [x] Implement `HNContentFetcher` (proxy + trafilatura + drop semantics)
+9. [x] Implement `HNSummarizer` (LLM, retries, drop after exhaustion)
+10. [x] Add `HNContentItemScorer` binding + `ScoredHNPost` travel
+11. [x] Implement `HNScoreFilter` and both writers
+12. [x] Implement `collect_hn_posts.py` + `config_collect_hn_posts.yaml`
+13. [x] Run all the tests and ensure that they pass
+14. [x] Run black on touched files and the full test suite to confirm no regressions
 
 #### 3.4 Modification summary
 
@@ -167,6 +167,7 @@ Components:
 | `mourat/processors/hn_fetcher.py` | New |
 | `mourat/processors/hn_summarizer.py` | New |
 | `mourat/processors/content_item_scorer.py` | Add `HNContentItemScorer` binding |
+| `mourat/filters.py` | Add `HNScoreFilter` |
 | `mourat/writers/hn_post_writers.py` | New |
 | `mourat/scripts/collect_hn_posts.py` | New |
 | `mourat/scripts/calibrate_hn_stats.py` | New |
@@ -174,6 +175,8 @@ Components:
 | `config/config_calibrate_hn_stats.yaml` | New |
 | `tests/test_hn_clients.py` | New |
 | `tests/test_hn_pipeline.py` | New |
+| `tests/test_hn_writers.py` | New |
+| `tests/test_hn_config.py` | New |
 | `tests/test_calibrate_hn_stats.py` | New |
 
 Reddit pipeline files are NOT modified: the neutral `compute_influence_score` and the neutral scorer core are imported, not changed; all Reddit-typed classes are cloned into HN siblings rather than generalized.

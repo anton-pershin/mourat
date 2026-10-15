@@ -1,0 +1,13 @@
+defaults:
+  - _self_
+
+sample_limit: 1000
+min_sample: 30
+percentiles: []
+output_path: data/hn_stats.yaml
+mode: overwrite
+tags: [story]
+
+monitoring_handler:
+  _target_: mourat.monitoring.MonitoringViaMarkdownFiles
+  filename_template: monitoring/step_${step}.md

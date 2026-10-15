@@ -301,6 +301,44 @@ class ScoredRedditPostCollection(BaseModel):
     posts: list[ScoredRedditPost]
 
 
+# -- HN post collection models --
+
+
+class HNPostInfo(BaseModel):
+    """A single HackerNews story for pipeline processing."""
+
+    hn_id: str
+    title: str
+    author: str
+    date: str  # ISO format datetime string
+    url: str
+    text: str = ""  # story_text when present, else empty
+    points: int = 0
+    num_comments: int = 0
+    influence_score: int | None = None
+    description: str = ""  # compact summary produced by HNSummarizer
+
+
+class HNPostCollection(BaseModel):
+    """Collection of HackerNews posts."""
+
+    posts: list[HNPostInfo]
+
+
+class ScoredHNPost(BaseModel):
+    """An HN post with relevance scores."""
+
+    post: HNPostInfo
+    relevance_scores: list[ScoreEntry] = []
+    filtering_score: float = 0.0
+
+
+class ScoredHNPostCollection(BaseModel):
+    """Collection of scored HN posts."""
+
+    posts: list[ScoredHNPost]
+
+
 # -- Paper collection models --
 
 
