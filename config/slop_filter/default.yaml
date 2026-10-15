@@ -3,7 +3,7 @@
 _target_: mourat.filters.HeuristicSlopFilter
 _partial_: true  # expect positional argument: monitoring_handler
 
-min_text_chars: 200
+min_text_chars: 10
 deleted_markers:
   - "[deleted]"
   - "[removed]"
