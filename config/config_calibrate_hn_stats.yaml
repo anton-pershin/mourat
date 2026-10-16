@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+
+sample_limit: 1000
+min_sample: 30
+percentiles: []
+output_path: ${result_dir}/hn_stats.yaml
+mode: overwrite
+tags: [story]

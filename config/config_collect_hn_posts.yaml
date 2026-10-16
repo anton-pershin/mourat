@@ -1,0 +1,106 @@
+defaults:
+  - _self_
+  - user_settings: user_settings
+  - hydra: base
+  - monitoring_handler: via_md_files
+  - llm/caila_gpt_6_luna@summarization_llm
+  - llm/caila_gpt_6_luna@scoring_llm
+
+result_dir: ${user_settings.result_dir}
+hydra_root: ${user_settings.hydra_root}
+hydra_dir: ${user_settings.hydra_dir}
+db_path: ${user_settings.db_path}
+jsonl_output_path: ${result_dir}/hn_posts.jsonl
+
+# Collector: HN Algolia search_by_date, server-side min_points filter
+collector:
+  _target_: mourat.collectors.hn.HNPostCollector
+  _partial_: true  # expect positional argument: monitoring_handler
+  # Set from calibrate_hn_stats.py output; 0 keeps calibration-driven runs uncut.
+  min_points: 0
+  tags: [story]  # includes ask_hn/show_hn; Algolia ANDs multiple tags
+  limit: 1000
+  time_window_lo_hours: 48
+  time_window_hi_hours: 0
+
+# Normalized influence (spec 17 formula): assessor + filter after collection
+hn_influence:
+  enabled: true
+  min_influence: 50
+  reference_level: 19  # from calibrate_hn_stats.py output (user copies by hand)
+  assessor:
+    _target_: mourat.processors.hn_influence.HNInfluenceAssessor
+    _partial_: true  # expect positional argument: monitoring_handler
+    reference_level: ${hn_influence.reference_level}
+  filter:
+    _target_: mourat.processors.hn_influence.HNInfluenceFilter
+    _partial_: true  # expect positional argument: monitoring_handler
+    min_influence: ${hn_influence.min_influence}
+
+# Content fetcher: proxy-aware fetch + trafilatura
+hn_fetcher:
+  _target_: mourat.processors.hn_fetcher.HNContentFetcher
+  _partial_: true  # expect positional argument: monitoring_handler
+  proxy: ${oc.env:SEMANTIC_SCHOLAR_PROXY,null}
+  timeout: 30
+
+# Summarizer: LLM compact description; unparseable output retried then dropped
+hn_summarizer:
+  _target_: mourat.processors.hn_summarizer.HNSummarizer
+  _partial_: true  # expect positional arguments: monitoring_handler, llm
+  retries: 2
+  system_prompt: ${hn_summarization.system_prompt}
+
+# Scorer (generalised content item scorer, HN binding; sees summary only)
+scorer:
+  _target_: mourat.processors.content_item_scorer.HNContentItemScorer
+  _partial_: true  # expect positional arguments: monitoring_handler, model
+  rq_list: ${scoring.rq_list}
+  tc_list: ${scoring.tc_list}
+  topic_list: ${scoring.topic_list}
+  constraints_contribute_to_filtering_score: false
+  system_prompt: ${scoring.system_prompt}
+  model_settings:
+    timeout: ${scoring.agent.timeout}
+  retries: ${scoring.agent.retries}
+
+# Score filter (generalised score filter, HN binding)
+score_filter:
+  _target_: mourat.filters.HNScoreFilter
+  _partial_: true  # expect positional argument: monitoring_handler
+  score_threshold: ${scoring.min_score}
+
+# Writers (independently enabled)
+db_writer:
+  enabled: true
+  _target_: mourat.writers.hn_post_writers.HNContentItemDbWriter
+  _partial_: true  # expect positional argument: monitoring_handler
+  platform_id: hackernews
+  influence_metric_id: hn_points
+
+jsonl_writer:
+  enabled: true
+  _target_: mourat.writers.hn_post_writers.HNPostJsonlWriter
+  _partial_: true  # expect positional argument: monitoring_handler
+  output_path: ${jsonl_output_path}
+
+# Component configs
+hn_summarization:
+  system_prompt: |
+    You summarize HackerNews-linked articles for a research-assistant pipeline.
+
+    Given the post title and the article content, produce a COMPACT summary of
+    the article: 2-4 self-contained sentences describing what it is about.
+    Do not add information that is not in the content. Return JSON:
+    {"summary": "..."}
+
+scoring:
+  system_prompt: >
+    You are a research relevance scorer. Score each post against the given RQs, TCs, and topics (0-100).
+  rq_list: []
+  tc_list: []
+  topic_list: []
+  min_score: 60
+  agent:
+    timeout: 300
+    retries: 3

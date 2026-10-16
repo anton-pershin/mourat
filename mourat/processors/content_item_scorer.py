@@ -21,10 +21,13 @@ from mourat.data_models import (
     ContentItemScoringInputCollection,
     EnrichedRedditPost,
     EnrichedRedditPostCollection,
+    HNPostCollection,
     PaperCandidate,
     PaperCandidateCollection,
     ResolvedPaper,
     ResolvedPaperCollection,
+    ScoredHNPost,
+    ScoredHNPostCollection,
     ScoredPaper,
     ScoredPaperCollection,
     ScoredRedditPost,
@@ -355,6 +358,78 @@ class PostContentItemScorer(
             )
         ]
         output = ScoredRedditPostCollection(posts=scored_posts)
+        return output, text_for_monitoring
+
+
+class HNContentItemScorer(Function[HNPostCollection, ScoredHNPostCollection]):
+    """Scores HN posts via the shared content item scorer.
+
+    The item text presented to the LLM is `title + "\\n\\n" + description`
+    (summary only — the full fetched content was discarded by the summarizer).
+    """
+
+    def __init__(
+        self,
+        monitoring_handler: MonitoringHandler,
+        model: Model,
+        rq_list: list[dict] | None = None,
+        tc_list: list[dict] | None = None,
+        topic_list: list[dict] | None = None,
+        constraint_list: list[dict] | None = None,
+        constraints_contribute_to_filtering_score: bool = False,
+        system_prompt: str = SYSTEM_PROMPT,
+        model_settings: dict | None = None,
+        retries: int | None = None,
+        request_retries: int = 2,
+        request_retry_delay_seconds: float = 2.0,
+    ) -> None:
+        self.core = ContentItemScorer(
+            monitoring_handler,
+            model=model,
+            rq_list=rq_list,
+            tc_list=tc_list,
+            topic_list=topic_list,
+            constraint_list=constraint_list,
+            constraints_contribute_to_filtering_score=(
+                constraints_contribute_to_filtering_score
+            ),
+            system_prompt=system_prompt,
+            model_settings=model_settings,
+            retries=retries,
+            request_retries=request_retries,
+            request_retry_delay_seconds=request_retry_delay_seconds,
+        )
+        super().__init__(monitoring_handler)
+
+    def _run(self, data: HNPostCollection) -> tuple[ScoredHNPostCollection, str]:
+        neutral = ContentItemScoringInputCollection(
+            items=[
+                ContentItemScoringInput(
+                    id=post.hn_id,
+                    title=post.title,
+                    body_text=(
+                        f"{post.title}\n\n{post.description}"
+                        if post.description
+                        else post.title
+                    ),
+                    context_points=[],
+                )
+                for post in data.posts
+            ]
+        )
+        _, text_for_monitoring = self.core._run(neutral)
+
+        scored_posts = [
+            ScoredHNPost(
+                post=data.posts[index],
+                relevance_scores=scored.relevance_scores,
+                filtering_score=scored.filtering_score,
+            )
+            for index, scored in zip(
+                self.core.scored_item_indices, self.core.scored_items, strict=True
+            )
+        ]
+        output = ScoredHNPostCollection(posts=scored_posts)
         return output, text_for_monitoring
 
 

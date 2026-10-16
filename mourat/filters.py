@@ -14,6 +14,7 @@ from mourat.data_models import (
     ScoredPaperInfoCollection,
     ScoredRedditPost,
     ScoredRedditPostCollection,
+    ScoredHNPostCollection,
     ScoreEntry,
 )
 from mourat.monitoring import MonitoringHandler
@@ -119,6 +120,22 @@ class PostScoreFilter(ScoreFilter):
 
     def _make_output(self, items) -> ScoredRedditPostCollection:
         return ScoredRedditPostCollection(posts=items)
+
+
+class HNScoreFilter(ScoreFilter):
+    """Filters scored HN posts by filtering_score threshold."""
+
+    items_attr = "posts"
+
+    def _render_item(self, p) -> str:
+        return (
+            f"### {p.post.title}\n"
+            f"URL: {p.post.url}\n"
+            f"Filtering score: {p.filtering_score}\n\n"
+        )
+
+    def _make_output(self, items) -> ScoredHNPostCollection:
+        return ScoredHNPostCollection(posts=items)
 
 
 class PaperScoreFilter(ScoreFilter):
