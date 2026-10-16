@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from time import perf_counter
 from types import SimpleNamespace
 
 from pydantic import BaseModel
@@ -103,18 +104,37 @@ class HNSummarizer(Function[HNPostCollection, HNPostCollection]):
         prompt = self._build_prompt(post)
         last_error = None
         for attempt in range(self.retries + 1):
+            attempt_number = attempt + 1
+            started_at = perf_counter()
+            logger.info(
+                "HN summarizer LLM call start | post=%s | attempt=%d/%d",
+                post.hn_id,
+                attempt_number,
+                self.retries + 1,
+            )
             try:
                 result = self.agent.run_sync(prompt)
                 summary = result.output.summary
                 if not isinstance(summary, str) or not summary.strip():
                     raise ValueError("empty summary")
+                duration = perf_counter() - started_at
+                logger.info(
+                    "HN summarizer LLM call done | post=%s | attempt=%d/%d | duration=%.2fs",
+                    post.hn_id,
+                    attempt_number,
+                    self.retries + 1,
+                    duration,
+                )
                 return summary.strip()
             except Exception as exc:
+                duration = perf_counter() - started_at
                 last_error = exc
-                logger.debug(
-                    "HN summarizer attempt %d failed for %s: %s",
-                    attempt + 1,
+                logger.warning(
+                    "HN summarizer LLM call failed | post=%s | attempt=%d/%d | duration=%.2fs | error=%s",
                     post.hn_id,
+                    attempt_number,
+                    self.retries + 1,
+                    duration,
                     exc,
                 )
         raise RuntimeError(

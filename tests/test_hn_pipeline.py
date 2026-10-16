@@ -238,6 +238,44 @@ class TestHNSummarizer:
         assert "DISTINCT FETCHED ARTICLE BODY" not in out.posts[0].model_dump_json()
         assert "DISTINCT FETCHED ARTICLE BODY" in calls[1]
 
+    def test_logs_each_llm_attempt(self, caplog):
+        # Each slow model call needs a start/end log, including retries.
+        import logging
+        from types import SimpleNamespace
+        from mourat.processors import hn_summarizer
+
+        calls = []
+
+        class StubAgent:
+            def run_sync(self, prompt):
+                calls.append(prompt)
+                if len(calls) == 1:
+                    raise RuntimeError("temporary model failure")
+                return SimpleNamespace(
+                    output=hn_summarizer._SummaryOutput(summary="summary")
+                )
+
+        caplog.set_level(logging.INFO, logger="mourat.processors.hn_summarizer")
+        summarizer = hn_summarizer.HNSummarizer(
+            _CapturingHandler(), agent=StubAgent(), retries=1
+        )
+        out = summarizer(_collection([_post(hn_id="log-test")]), step_id="3")
+
+        assert len(out.posts) == 1
+        assert (
+            "HN summarizer LLM call start | post=log-test | attempt=1/2" in caplog.text
+        )
+        assert (
+            "HN summarizer LLM call failed | post=log-test | attempt=1/2" in caplog.text
+        )
+        assert (
+            "HN summarizer LLM call start | post=log-test | attempt=2/2" in caplog.text
+        )
+        assert (
+            "HN summarizer LLM call done | post=log-test | attempt=2/2" in caplog.text
+        )
+        assert "duration=" in caplog.text
+
     def test_retry_then_drop(self, monkeypatch):
         # T14 (R7, B6): retries configurable; drop after exhaustion; success on retry N honored.
         from mourat.processors.hn_summarizer import HNSummarizer
