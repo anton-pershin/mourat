@@ -56,15 +56,40 @@ def _compute_stats(
     return stats
 
 
-def _collect_scores(client: HNAlgoliaClient, now: int | None = None) -> list[int]:
-    """Collect story points published in [now-48h, now-24h]."""
+def _collect_scores(
+    client: HNAlgoliaClient,
+    now: int | None = None,
+    tags: list[str] | None = None,
+    sample_limit: int = 1000,
+) -> list[int]:
+    """Collect at most `sample_limit` scores from [now-48h, now-24h]."""
     now = (
         now if now is not None else int(datetime.datetime.now(datetime.UTC).timestamp())
     )
     lo = now - 48 * 3600
     hi = now - 24 * 3600
-    hits = client.search_by_date(lo=lo, hi=hi, min_points=0, tags=["story"])
-    return [hit["points"] for hit in hits]
+    tags = tags if tags is not None else ["story"]
+    if sample_limit <= 0:
+        raise ValueError(f"sample_limit must be positive, got {sample_limit}")
+
+    scores = []
+    page = 0
+    while len(scores) < sample_limit:
+        page_size = 1000
+        payload = client.search_page(
+            lo=lo,
+            hi=hi,
+            min_points=0,
+            tags=tags,
+            page=page,
+            page_size=page_size,
+        )
+        hits = payload["hits"]
+        scores.extend(int(hit["points"]) for hit in hits)
+        if not hits or page + 1 >= (payload.get("nbPages") or 0):
+            break
+        page += 1
+    return scores[:sample_limit]
 
 
 def _render_block(stats: dict, timestamp: str) -> str:
@@ -91,7 +116,11 @@ def main(cfg: DictConfig) -> None:
         cfg.monitoring_handler
     )
     client = HNAlgoliaClient()
-    scores = _collect_scores(client)
+    scores = _collect_scores(
+        client,
+        tags=list(cfg.tags),
+        sample_limit=cfg.sample_limit,
+    )
     stats = _compute_stats(
         scores, min_sample=cfg.min_sample, percentiles=list(cfg.percentiles)
     )

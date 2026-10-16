@@ -20,7 +20,7 @@ class HNPostCollector(Function[Any, HNPostCollection]):
         hn_client: HNAlgoliaClient,
         time_window_lo_hours: int = 48,
         time_window_hi_hours: int = 0,
-        min_points: int = 20,
+        min_points: int = 0,
         tags: list[str] | None = None,
         limit: int = 1000,
         text_for_monitoring_template: str = "Collected {count} HN posts",

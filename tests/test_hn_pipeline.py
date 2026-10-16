@@ -1,6 +1,7 @@
 """Unit tests for the HN pipeline stages (spec 19)."""
 
 import pytest
+import requests
 
 from mourat.data_models import HNPostCollection, HNPostInfo
 from mourat.monitoring import MonitoringHandler
@@ -99,7 +100,7 @@ class _FakeResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise RuntimeError(f"HTTP {self.status_code}")
+            raise requests.HTTPError(f"HTTP {self.status_code}")
 
 
 class _FakeSession:
@@ -175,7 +176,8 @@ class TestHNSummarizer:
         from mourat.processors.hn_summarizer import HNSummarizer
 
         monkeypatch.setattr(
-            "mourat.processors.hn_fetcher._extract_main_content", lambda html: "t"
+            "mourat.processors.hn_fetcher._extract_main_content",
+            lambda html: "DISTINCT FETCHED ARTICLE BODY",
         )
         handler = _CapturingHandler()
         session = _FakeSession([_FakeResponse(200, "hello world")])
@@ -187,7 +189,7 @@ class TestHNSummarizer:
         out = summarizer(fetched, step_id="3")
         assert out.posts[0].description == "A compact summary of the article."
         # fetched content is not stored on the post (only title+description remain)
-        assert "hello" not in out.posts[0].model_dump_json()
+        assert "DISTINCT FETCHED ARTICLE BODY" not in out.posts[0].model_dump_json()
 
     def test_prompt_contains_title_and_content(self, monkeypatch):
         # T15 (R7): prompt is exactly title + fetched content.
@@ -195,7 +197,7 @@ class TestHNSummarizer:
 
         monkeypatch.setattr(
             "mourat.processors.hn_fetcher._extract_main_content",
-            lambda html: "hello world",
+            lambda html: "DISTINCT FETCHED ARTICLE BODY",
         )
         handler = _CapturingHandler()
         session = _FakeSession([_FakeResponse(200, "hello world")])
@@ -205,7 +207,36 @@ class TestHNSummarizer:
         llm = _StubLLM(['{"summary": "summary"}'])
         HNSummarizer(handler, llm=llm, retries=1)(fetched, step_id="3")
         assert "My title" in llm.prompts[0]
-        assert "hello world" in llm.prompts[0]
+        assert "DISTINCT FETCHED ARTICLE BODY" in llm.prompts[0]
+
+    def test_configured_model_uses_agent_structured_output(self, monkeypatch):
+        # R7 review regression: exercise model->agent boundary using stub Model.
+        from types import SimpleNamespace
+        from mourat.processors import hn_summarizer
+
+        calls = []
+
+        class StubAgent:
+            def __init__(self, model, **kwargs):
+                calls.append((model, kwargs))
+
+            def run_sync(self, prompt):
+                calls.append(prompt)
+                return SimpleNamespace(
+                    output=hn_summarizer._SummaryOutput(summary="summary")
+                )
+
+        monkeypatch.setattr(hn_summarizer, "Agent", StubAgent)
+        handler = _CapturingHandler()
+        model = object()  # stands in for configured pydantic-ai Model
+        summarizer = hn_summarizer.HNSummarizer(handler, model=model, retries=0)
+        post = _post(points=60)
+        post.text = "DISTINCT FETCHED ARTICLE BODY"
+        out = summarizer(_collection([post]), step_id="3")
+        assert calls[0][0] is model
+        assert out.posts[0].description == "summary"
+        assert "DISTINCT FETCHED ARTICLE BODY" not in out.posts[0].model_dump_json()
+        assert "DISTINCT FETCHED ARTICLE BODY" in calls[1]
 
     def test_retry_then_drop(self, monkeypatch):
         # T14 (R7, B6): retries configurable; drop after exhaustion; success on retry N honored.
@@ -215,7 +246,9 @@ class TestHNSummarizer:
             "mourat.processors.hn_fetcher._extract_main_content", lambda html: "t"
         )
         handler = _CapturingHandler()
-        session = _FakeSession([_FakeResponse(200, "hello world")])
+        session = _FakeSession(
+            [_FakeResponse(200, "hello world"), _FakeResponse(200, "hello world")]
+        )
         fetched = HNContentFetcher(handler, http_session=session, proxy=None)(
             _collection([_post(hn_id="1", points=60), _post(hn_id="2", points=61)]),
             step_id="2",

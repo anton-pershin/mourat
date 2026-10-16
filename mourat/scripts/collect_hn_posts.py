@@ -85,6 +85,8 @@ def collect_hn_posts_main(cfg: DictConfig) -> None:
     )
     step_id = "1"
     raw_posts: HNPostCollection = collector({}, step_id=step_id)
+    collected_count = len(raw_posts.posts)
+    influence_filtered_count = collected_count
     logger.info(
         "step %s | HNPostCollector | collected %d posts", step_id, len(raw_posts.posts)
     )
@@ -104,6 +106,7 @@ def collect_hn_posts_main(cfg: DictConfig) -> None:
             "1.6", "HNInfluenceFilter", len(raw_posts.posts), len(filtered_raw.posts)
         )
         raw_posts = filtered_raw
+        influence_filtered_count = len(raw_posts.posts)
 
     # Step 2: Fetch linked content (posts with unavailable URLs are dropped)
     fetcher = hydra.utils.instantiate(cfg.hn_fetcher)(monitoring_handler)
@@ -116,7 +119,7 @@ def collect_hn_posts_main(cfg: DictConfig) -> None:
     # Step 3: Summarize (LLM); unparseable output retried then dropped
     summarization_llm: Model = hydra.utils.instantiate(cfg.summarization_llm)
     summarizer = hydra.utils.instantiate(cfg.hn_summarizer)(
-        monitoring_handler, llm=summarization_llm
+        monitoring_handler, model=summarization_llm
     )
     step_id = "3"
     summarized_posts: HNPostCollection = summarizer(fetched_posts, step_id=step_id)
@@ -203,8 +206,8 @@ def collect_hn_posts_main(cfg: DictConfig) -> None:
     logger.info(
         "Pipeline complete: %d collected, %d after influence filter, "
         "%d fetched, %d summarized, %d scored, %d after score filter",
-        len(raw_posts.posts),
-        len(raw_posts.posts),
+        collected_count,
+        influence_filtered_count,
         len(fetched_posts.posts),
         len(summarized_posts.posts),
         len(scored_posts.posts),

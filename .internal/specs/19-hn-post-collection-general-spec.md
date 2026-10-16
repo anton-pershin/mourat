@@ -132,11 +132,11 @@ Components:
 - `mourat/collectors/hn.py` — `HNPostCollector(Function[Any, HNPostCollection])`: paginates the client, respects `limit`.
 - `mourat/processors/hn_influence.py` — `HNInfluenceAssessor` / `HNInfluenceFilter`; reuses `compute_influence_score` from `mourat/processors/post_influence.py`.
 - `mourat/processors/hn_fetcher.py` — `HNContentFetcher`: proxy-aware requests session + trafilatura; drops failed/empty posts.
-- `mourat/processors/hn_summarizer.py` — `HNSummarizer`: LLM call per post, configurable retries, drop after exhaustion; sets `description`.
+- `mourat/processors/hn_summarizer.py` — `HNSummarizer`: pydantic-ai `Agent` with `_SummaryOutput` structured output; configured outer retry loop; drops after exhaustion and clears `post.text` after successful summarization.
 - `mourat/processors/content_item_scorer.py` — add `HNContentItemScorer` binding; `ScoredHNPost` output.
 - `mourat/writers/hn_post_writers.py` — `HNContentItemDbWriter` (platform "hackernews", metric "hn_points", id `hn_{id}`, description = summary) + `HNPostJsonlWriter`.
-- `mourat/scripts/collect_hn_posts.py` + `config/config_collect_hn_posts.yaml` — procedural pipeline, step ids 1, 1.5, 1.6, 2–6; `read_enabled` guards.
-- `mourat/scripts/calibrate_hn_stats.py` + `config/config_calibrate_hn_stats.yaml` — yesterday's-cohort [now−48h, now−24h] sampling over `search_by_date`.
+- `mourat/scripts/collect_hn_posts.py` + `config/config_collect_hn_posts.yaml` — procedural pipeline, step ids 1, 1.5, 1.6, 2–6; `read_enabled` guards; final counts retain the original collection total and the post-influence total separately.
+- `mourat/scripts/calibrate_hn_stats.py` + `config/config_calibrate_hn_stats.yaml` — yesterday's-cohort [now−48h, now−24h] sampling over `search_by_date`; passes configured tags and caps results at `sample_limit` across pages.
 - Data models: `HNPostInfo`, `HNPostCollection`, `SummarizedHNPost(Collection)`, `ScoredHNPost(Collection)` in `mourat/data_models.py`.
 
 #### 3.3 Todo list

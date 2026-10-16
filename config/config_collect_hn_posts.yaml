@@ -16,8 +16,8 @@ jsonl_output_path: ${result_dir}/hn_posts.jsonl
 collector:
   _target_: mourat.collectors.hn.HNPostCollector
   _partial_: true  # expect positional argument: monitoring_handler
-  # min_points value is set by the user after the calibration script output
-  min_points: 20
+  # Set from calibrate_hn_stats.py output; 0 keeps calibration-driven runs uncut.
+  min_points: 0
   tags: [story, ask_hn, show_hn]
   limit: 1000
   time_window_lo_hours: 48

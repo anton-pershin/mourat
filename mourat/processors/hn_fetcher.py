@@ -55,10 +55,19 @@ class HNContentFetcher(Function[HNPostCollection, HNPostCollection]):
                     headers={"User-Agent": DEFAULT_USER_AGENT},
                 )
                 resp.raise_for_status()
-                content = _extract_main_content(resp.text)
-            except Exception as exc:
+            except requests.RequestException as exc:
                 logger.debug(
                     "HN fetch failed for %s (%s): %s", post.hn_id, post.url, exc
+                )
+                dropped += 1
+                continue
+            try:
+                content = _extract_main_content(resp.text)
+            except Exception:
+                logger.exception(
+                    "HN content extraction failed unexpectedly for %s (%s)",
+                    post.hn_id,
+                    post.url,
                 )
                 dropped += 1
                 continue

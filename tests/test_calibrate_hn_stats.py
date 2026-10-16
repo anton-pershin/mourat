@@ -19,9 +19,23 @@ class _StubClient:
         self.hits = hits
         self.calls = []
 
-    def search_by_date(self, lo, hi, min_points=0, tags=None, page_size=1000):
-        self.calls.append({"lo": lo, "hi": hi, "min_points": min_points, "tags": tags})
-        return [h for h in self.hits if lo <= h["created_at_i"] < hi]
+    def search_page(self, lo, hi, min_points=0, tags=None, page=0, page_size=1000):
+        self.calls.append(
+            {
+                "lo": lo,
+                "hi": hi,
+                "min_points": min_points,
+                "tags": tags,
+                "page": page,
+                "page_size": page_size,
+            }
+        )
+        selected = [h for h in self.hits if lo <= h["created_at_i"] < hi]
+        start = page * page_size
+        return {
+            "hits": selected[start : start + page_size],
+            "nbPages": (len(selected) + page_size - 1) // page_size,
+        }
 
 
 def test_compute_stats_matches_reference():
@@ -62,10 +76,61 @@ def test_collect_scores_window_bounds():
         {"created_at_i": NOW - 72 * 3600, "points": 777},  # too old
     ]
     client = _StubClient(hits)
-    scores = _collect_scores(client, now=NOW)
-    assert scores == [10, 20]
+    scores = _collect_scores(client, now=NOW, tags=["story", "show_hn"], sample_limit=1)
+    assert scores == [10]
     assert client.calls[0]["lo"] == NOW - 48 * 3600
     assert client.calls[0]["hi"] == NOW - 24 * 3600
+    assert client.calls[0]["tags"] == ["story", "show_hn"]
+    assert client.calls[0]["page_size"] == 1000
+
+
+def test_collect_scores_paginates_to_sample_limit():
+    # Review regression (R5): sample cap applies across pages.
+    hits = [{"created_at_i": NOW - 30 * 3600 + i, "points": i} for i in range(5)]
+    client = _StubClient(hits)
+    scores = _collect_scores(client, now=NOW, tags=["show_hn"], sample_limit=3)
+    assert scores == [0, 1, 2]
+    assert len(client.calls) == 1
+    assert client.calls[0]["tags"] == ["show_hn"]
+
+
+def test_main_passes_configured_tags_and_sample_limit(tmp_path, monkeypatch):
+    # R5 review regression: script entry point uses both config overrides.
+    from types import SimpleNamespace
+    from mourat.scripts import calibrate_hn_stats
+
+    captured = {}
+
+    class StubClient:
+        pass
+
+    class StubMonitoring:
+        def __call__(self, step, text):
+            pass
+
+    monkeypatch.setattr(calibrate_hn_stats, "HNAlgoliaClient", StubClient)
+
+    def collect(client, now=None, tags=None, sample_limit=1000):
+        captured.update(tags=tags, sample_limit=sample_limit)
+        return [1, 2, 3]
+
+    monkeypatch.setattr(calibrate_hn_stats, "_collect_scores", collect)
+    monkeypatch.setattr(
+        calibrate_hn_stats.hydra.utils,
+        "instantiate",
+        lambda cfg: StubMonitoring(),
+    )
+    cfg = SimpleNamespace(
+        monitoring_handler={},
+        tags=["show_hn"],
+        sample_limit=17,
+        min_sample=1,
+        percentiles=[],
+        output_path=str(tmp_path / "out.yaml"),
+        mode="overwrite",
+    )
+    calibrate_hn_stats.main(cfg)
+    assert captured == {"tags": ["show_hn"], "sample_limit": 17}
 
 
 def test_render_and_append_or_write(tmp_path):
