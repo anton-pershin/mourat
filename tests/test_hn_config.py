@@ -5,19 +5,21 @@ from pathlib import Path
 from hydra import compose, initialize_config_dir
 
 
-def test_config_collect_hn_posts_composes():
+def test_config_collect_hn_posts_composes(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_PROXY", "http://proxy.example:8080")
     configs_dir = Path(__file__).resolve().parent.parent / "config"
     with initialize_config_dir(config_dir=str(configs_dir), version_base="1.3"):
         cfg = compose(config_name="config_collect_hn_posts")
 
     # Required keys present
     assert "collector" in cfg
-    assert cfg.collector.tags == ["story", "ask_hn", "show_hn"]
+    assert cfg.collector.tags == ["story"]  # Includes Ask HN and Show HN stories.
     assert "min_points" in cfg.collector
     assert "hn_influence" in cfg
     assert cfg.hn_influence.min_influence == 50
     assert "reference_level" in cfg.hn_influence
     assert "hn_fetcher" in cfg
+    assert cfg.hn_fetcher.proxy == "http://proxy.example:8080"
     assert "hn_summarizer" in cfg
     assert "retries" in cfg.hn_summarizer
     assert "scorer" in cfg

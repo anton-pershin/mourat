@@ -78,6 +78,28 @@ class TestHNContentItemDbWriter:
         assert row["description"] == "A compact summary."
         assert row["influence_score"] == 73
 
+    def test_relevance_links_use_database_api_arguments(self, db_conn, monkeypatch):
+        from mourat.data_models import ScoreEntry
+        from mourat.database import content_item as ci
+
+        captured = []
+
+        def link(conn, content_id, target_id, justification="", relevance_score=None):
+            captured.append((content_id, target_id, justification, relevance_score))
+
+        monkeypatch.setattr(ci, "add_item_research_question", link)
+        writer = HNContentItemDbWriter(_Handler(), conn=db_conn)
+        scored = _scored(_post())
+        scored.relevance_scores = [
+            ScoreEntry(
+                id="rq-1", type="rq", score=90, justification="Relevant research"
+            )
+        ]
+
+        writer(ScoredHNPostCollection(posts=[scored]), step_id="6")
+
+        assert captured == [("hn_100", "rq-1", "Relevant research", 90)]
+
     def test_dedup_skips_existing(self, db_conn):
         # T17 (R9): second write of the same hn_id is skipped, not duplicated.
         handler = _Handler()

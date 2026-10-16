@@ -3,8 +3,8 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/caila_glm_5_3_flash@summarization_llm
-  - llm/caila_glm_5_3_flash@scoring_llm
+  - llm/caila_gpt_6_luna@summarization_llm
+  - llm/caila_gpt_6_luna@scoring_llm
 
 result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
@@ -18,7 +18,7 @@ collector:
   _partial_: true  # expect positional argument: monitoring_handler
   # Set from calibrate_hn_stats.py output; 0 keeps calibration-driven runs uncut.
   min_points: 0
-  tags: [story, ask_hn, show_hn]
+  tags: [story]  # includes ask_hn/show_hn; Algolia ANDs multiple tags
   limit: 1000
   time_window_lo_hours: 48
   time_window_hi_hours: 0
@@ -41,7 +41,7 @@ hn_influence:
 hn_fetcher:
   _target_: mourat.processors.hn_fetcher.HNContentFetcher
   _partial_: true  # expect positional argument: monitoring_handler
-  proxy: ${oc.env:HN_FETCH_PROXY,null}
+  proxy: ${oc.env:SEMANTIC_SCHOLAR_PROXY,null}
   timeout: 30
 
 # Summarizer: LLM compact description; unparseable output retried then dropped

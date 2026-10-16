@@ -115,8 +115,8 @@ class HNContentItemDbWriter(Function[ScoredHNPostCollection, ScoredHNPostCollect
                         self.conn,
                         item_id,
                         entry.id,
-                        score=entry.score,
-                        justification=entry.justification,
+                        entry.justification,
+                        int(entry.score),
                     )
                 except Exception:
                     failed_links += 1
