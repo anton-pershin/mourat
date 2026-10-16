@@ -1,4 +1,4 @@
-_target_: pydantic_ai.models.openai.OpenAIChatModel
+_target_: pydantic_ai.models.openai.OpenAIResponsesModel
 _recursive_: true
 model_name: gpt-6-luna 
 provider:
