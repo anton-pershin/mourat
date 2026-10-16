@@ -238,8 +238,7 @@ class TestHNSummarizer:
         assert "DISTINCT FETCHED ARTICLE BODY" not in out.posts[0].model_dump_json()
         assert "DISTINCT FETCHED ARTICLE BODY" in calls[1]
 
-    def test_logs_each_llm_attempt(self, caplog):
-        # Each slow model call needs a start/end log, including retries.
+    def test_logs_one_progress_line_per_llm_call(self, caplog):
         import logging
         from types import SimpleNamespace
         from mourat.processors import hn_summarizer
@@ -259,22 +258,25 @@ class TestHNSummarizer:
         summarizer = hn_summarizer.HNSummarizer(
             _CapturingHandler(), agent=StubAgent(), retries=1
         )
-        out = summarizer(_collection([_post(hn_id="log-test")]), step_id="3")
+        out = summarizer(
+            _collection([_post(hn_id="log-test"), _post(hn_id="log-test-2")]),
+            step_id="3",
+        )
 
-        assert len(out.posts) == 1
-        assert (
-            "HN summarizer LLM call start | post=log-test | attempt=1/2" in caplog.text
-        )
-        assert (
-            "HN summarizer LLM call failed | post=log-test | attempt=1/2" in caplog.text
-        )
-        assert (
-            "HN summarizer LLM call start | post=log-test | attempt=2/2" in caplog.text
-        )
-        assert (
-            "HN summarizer LLM call done | post=log-test | attempt=2/2" in caplog.text
-        )
-        assert "duration=" in caplog.text
+        assert len(out.posts) == 2
+        records = [
+            record.getMessage()
+            for record in caplog.records
+            if "summarized HN post" in record.getMessage()
+        ]
+        assert len(records) == 3  # one line per model invocation, including retry
+        assert "(1/2)" in records[0] and "post 'Test post'" in records[0]
+        assert "failed" in records[0] and "attempt 1/2" in records[0]
+        assert "(1/2)" in records[1] and "post 'Test post'" in records[1]
+        assert "success" in records[1] and "attempt 2/2" in records[1]
+        assert "(2/2)" in records[2] and "post 'Test post'" in records[2]
+        assert "success" in records[2] and "attempt 1/2" in records[2]
+        assert all("| " in record and "s |" in record for record in records)
 
     def test_retry_then_drop(self, monkeypatch):
         # T14 (R7, B6): retries configurable; drop after exhaustion; success on retry N honored.

@@ -100,41 +100,36 @@ class HNSummarizer(Function[HNPostCollection, HNPostCollection]):
     def _build_prompt(self, post) -> str:
         return f"Title: {post.title}\n\nContent:\n{post.text}"
 
-    def _summarize_one(self, post) -> str:
+    def _summarize_one(self, post, call_index: int, total_calls: int) -> str:
         prompt = self._build_prompt(post)
         last_error = None
         for attempt in range(self.retries + 1):
-            attempt_number = attempt + 1
             started_at = perf_counter()
-            logger.info(
-                "HN summarizer LLM call start | post=%s | attempt=%d/%d",
-                post.hn_id,
-                attempt_number,
-                self.retries + 1,
-            )
             try:
                 result = self.agent.run_sync(prompt)
                 summary = result.output.summary
                 if not isinstance(summary, str) or not summary.strip():
                     raise ValueError("empty summary")
-                duration = perf_counter() - started_at
                 logger.info(
-                    "HN summarizer LLM call done | post=%s | attempt=%d/%d | duration=%.2fs",
-                    post.hn_id,
-                    attempt_number,
+                    "summarized HN post '%s' (%d/%d) | success | attempt %d/%d | %.2fs",
+                    post.title,
+                    call_index,
+                    total_calls,
+                    attempt + 1,
                     self.retries + 1,
-                    duration,
+                    perf_counter() - started_at,
                 )
                 return summary.strip()
             except Exception as exc:
-                duration = perf_counter() - started_at
                 last_error = exc
                 logger.warning(
-                    "HN summarizer LLM call failed | post=%s | attempt=%d/%d | duration=%.2fs | error=%s",
-                    post.hn_id,
-                    attempt_number,
+                    "summarized HN post '%s' (%d/%d) | failed | attempt %d/%d | %.2fs | %s",
+                    post.title,
+                    call_index,
+                    total_calls,
+                    attempt + 1,
                     self.retries + 1,
-                    duration,
+                    perf_counter() - started_at,
                     exc,
                 )
         raise RuntimeError(
@@ -145,9 +140,10 @@ class HNSummarizer(Function[HNPostCollection, HNPostCollection]):
     def _run(self, data: HNPostCollection) -> tuple[HNPostCollection, str]:
         kept = []
         dropped = 0
-        for post in data.posts:
+        total_calls = len(data.posts)
+        for call_index, post in enumerate(data.posts, start=1):
             try:
-                post.description = self._summarize_one(post)
+                post.description = self._summarize_one(post, call_index, total_calls)
             except RuntimeError as exc:
                 logger.warning("%s", exc)
                 dropped += 1
