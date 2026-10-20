@@ -3,8 +3,8 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/caila_glm_5_3_flash@scoring_llm
-  - llm/caila_glm_5_3_flash@authority_llm
+  - llm/caila_gpt_6_luna@scoring_llm
+  - llm/caila_gpt_6_luna@authority_llm
   - relevance_triage: default
   - arxiv_html_affiliations: default
   - authority_influence: default

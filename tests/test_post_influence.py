@@ -155,14 +155,13 @@ def test_collect_posts_config_composes_with_post_influence():
     configs_dir = Path(__file__).resolve().parent.parent / "config"
     with initialize_config_dir(config_dir=str(configs_dir), version_base="1.3"):
         cfg = compose(config_name="config_collect_posts")
-    # Default references were filled in from the calibration output
-    # (2026-10-12 config refresh).
+    # Values match the checked-in defaults in config/config_collect_posts.yaml.
     assert cfg.post_influence.references == {
-        "singularity": 250,
-        "accelerate": 180,
+        "singularity": 100,
+        "accelerate": 60,
         "LocalLLaMA": 20,
         "MachineLearning": 3,
-        "computervision": 5,
+        "computervision": 3,
     }
     assert cfg.post_influence.min_influence == 50
     assert cfg.post_influence.enabled is True

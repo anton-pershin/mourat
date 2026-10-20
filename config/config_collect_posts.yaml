@@ -3,9 +3,9 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/caila_glm_5_3_flash@scoring_llm
-  - llm/caila_glm_5_3_flash@enrichment_llm
-  - llm/caila_glm_5_3_flash@classification_llm
+  - llm/caila_gpt_6_luna@scoring_llm
+  - llm/caila_gpt_6_luna@enrichment_llm
+  - llm/caila_gpt_6_luna@classification_llm
   - collector: reddit
   - slop_filter: default
   - db_writer: posts
