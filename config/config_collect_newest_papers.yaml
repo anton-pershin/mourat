@@ -23,9 +23,21 @@ db_path: ${user_settings.db_path}
 feeds:
   cs_lg:
     _target_: mourat.collectors.arxiv.ArxivPaperCollector
-    _partial_: true  # expect positional arguments: monitoring_handler, http_client
+    _partial_: true
     mode: newest
     api_url: https://rss.arxiv.org/rss/cs.LG
+    only_new_submissions: true
+  cs_cl:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/cs.CL
+    only_new_submissions: true
+  cs_ai:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/cs.AI
     only_new_submissions: true
 
 # Research attribute ids to collect for (loaded from the database).
