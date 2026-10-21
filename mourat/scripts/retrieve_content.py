@@ -18,7 +18,7 @@ from mourat.database.query_engine import (
 from mourat.utils.common import get_config_path
 from mourat.utils.console import console
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("mourat")
 
 CONFIG_NAME = "config_retrieve_content"
 

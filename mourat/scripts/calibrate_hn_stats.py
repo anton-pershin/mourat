@@ -18,7 +18,7 @@ from mourat.clients.hn_algolia import HNAlgoliaClient
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import get_config_path
 
-logger = logging.getLogger("mourat.scripts.calibrate_hn_stats")
+logger = logging.getLogger("mourat")
 
 CONFIG_NAME = "config_calibrate_hn_stats"
 

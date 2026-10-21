@@ -51,7 +51,7 @@ from mourat.resolvers.seed_resolver import SeedResolver
 from mourat.utils.common import get_config_path
 from mourat.utils.config import read_enabled
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("mourat")
 
 CONFIG_NAME = "config_collect_influential_papers_from_seeds"
 

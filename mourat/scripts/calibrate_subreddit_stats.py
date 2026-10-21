@@ -24,7 +24,7 @@ from omegaconf import DictConfig
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import get_config_path
 
-logger = logging.getLogger("mourat.scripts.calibrate_subreddit_stats")
+logger = logging.getLogger("mourat")
 
 CONFIG_NAME = "config_calibrate_subreddit_stats"
 

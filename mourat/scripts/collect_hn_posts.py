@@ -22,7 +22,7 @@ from mourat.processors.hn_summarizer import HNSummarizer
 from mourat.utils.common import get_config_path
 from mourat.utils.config import read_enabled
 
-logger = logging.getLogger("mourat.scripts.collect_hn_posts")
+logger = logging.getLogger("mourat")
 
 CONFIG_NAME = "config_collect_hn_posts"
 
