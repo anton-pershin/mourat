@@ -49,6 +49,10 @@ technical_challenge_ids:
   - reasoning_time_reduction
   - llm_kv_cache_reduction
   - llm_model_size_reduction
+  - tool_output_redundancy
+  - irrelevant_skills_tools
+  - efficient_compaction
+  - lack_of_agent_determinism
 research_topic_ids: []
 constraint_ids: []
 
