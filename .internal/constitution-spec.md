@@ -68,70 +68,83 @@ No insight is needed.
 
 #### 5.1. High-level design
 
+Solid arrows show pipeline data flow and output writes. Dashed arrows show database reads. Each collection workflow stores items only on request.
+
+collect_newest_papers.py — Newest papers
+
 ```mermaid
-flowchart TB
-  DB[("Database\ncontent items · research questions\ntechnical challenges · topics · constraints")]
-
-  subgraph NEWEST["collect_newest_papers.py — Newest papers"]
-    direction LR
-    N1["Producer\nCollect arXiv papers"] --> N2["Sieve\nRelevance triage"] --> N3["Map\nFetch affiliations"] --> N4["Map\nAssess authority influence"] --> N5["Map\nResolve candidates"] --> N6["Map\nScore research relevance"] --> N7["Sieve\nFilter by score"]
-    N7 --> NDB["Consumer\nDatabase writer"]
-    N7 --> NJ["Consumer\nJSONL writer"]
-  end
-
-  subgraph SCRATCH["collect_influential_papers_from_scratch.py — Influential papers from scratch"]
-    direction LR
-    S1["Producer\nDiscover paper candidates"] --> S2["Sieve\nResolve papers"] --> S3["Map\nAssess influence"] --> S4["Map\nVerify arXiv PDF"] --> S5["Map\nScore research relevance"] --> S6["Sieve\nFilter by score"]
-    S6 --> SDB["Consumer\nDatabase writer"]
-    S6 --> SJ["Consumer\nJSONL writer"]
-  end
-
-  subgraph SEEDS["collect_influential_papers_from_seeds.py — Seed-based expansion"]
-    direction LR
-    E1["Producer\nRetrieve seed items"] --> E2["Map / Sieve\nResolve seeds"] --> E3["Transformer\nExpand seed papers"] --> E4["Sieve\nResolve candidates"] --> E5["Map\nAssess influence"] --> E6["Sieve\nApply seed influence floor"] --> E7["Map\nVerify arXiv PDF"] --> E8["Map\nScore research relevance"] --> E9["Sieve\nFilter by score"]
-    E9 --> EDB["Consumer\nDatabase writer"]
-    E9 --> EJ["Consumer\nJSONL writer"]
-  end
-
-  subgraph REDDIT["collect_posts.py — Reddit posts"]
-    direction LR
-    R1["Producer\nCollect Reddit posts"] --> R2["Map\nAssess influence"] --> R3["Sieve\nFilter by influence"] --> R4["Sieve\nHeuristic slop filter"] --> R5["Map\nClassify slop"] --> R6["Sieve\nFilter slop"] --> R7["Map\nEnrich from web"] --> R8["Map\nScore research relevance"] --> R9["Sieve\nFilter by score"]
-    R9 --> RDB["Consumer\nDatabase writer"]
-    R9 --> RJ["Consumer\nJSONL writer"]
-  end
-
-  subgraph HN["collect_hn_posts.py — Hacker News posts"]
-    direction LR
-    H1["Producer\nCollect HN posts"] --> H2["Map\nAssess influence"] --> H3["Sieve\nFilter by influence"] --> H4["Sieve\nFetch linked content"] --> H5["Reducer\nSummarize content"] --> H6["Map\nScore research relevance"] --> H7["Sieve\nFilter by score"]
-    H7 --> HDB["Consumer\nDatabase writer"]
-    H7 --> HJ["Consumer\nJSONL writer"]
-  end
-
-  subgraph RETRIEVAL["retrieve_content.py — Content retrieval"]
-    direction LR
-    Q1["Producer\nBuild query from keywords or research needs"] --> Q2["Transformer\nSearch database"] --> Q3["Consumer\nPresent matching items"]
-  end
-
+flowchart LR
+  DB[("Database")]
+  N1["Producer\nCollect arXiv papers"] --> N2["Sieve\nRelevance triage"] --> N3["Map\nFetch affiliations"] --> N4["Map\nAssess authority influence"] --> N5["Map\nResolve candidates"] --> N6["Map\nScore research relevance"] --> N7["Sieve\nFilter by score"]
+  N7 --> NDB["Consumer\nDatabase writer"]
+  N7 --> NJ["Consumer\nJSONL writer"]
   DB -. "research context" .-> N2
   DB -. "research context" .-> N6
+  NDB -->|"store on request"| DB
+  NJ --> NFILE[("JSONL output")]
+```
+
+collect_influential_papers_from_scratch.py — Influential papers from scratch
+
+```mermaid
+flowchart LR
+  DB[("Database")]
+  S1["Producer\nDiscover paper candidates"] --> S2["Transformer\nResolve papers"] --> S3["Map\nAssess influence"] --> S4["Map\nVerify arXiv PDF"] --> S5["Map\nScore research relevance"] --> S6["Sieve\nFilter by score"]
+  S6 --> SDB["Consumer\nDatabase writer"]
+  S6 --> SJ["Consumer\nJSONL writer"]
   DB -. "research context" .-> S1
   DB -. "research context" .-> S5
+  SDB -->|"store on request"| DB
+  SJ --> SFILE[("JSONL output")]
+```
+
+collect_influential_papers_from_seeds.py — Seed-based expansion
+
+```mermaid
+flowchart LR
+  DB[("Database")]
+  E1["Producer\nRetrieve seed items"] --> E2["Transformer\nResolve seeds"] --> E3["Transformer\nExpand seed papers"] --> E4["Transformer\nResolve candidates"] --> E5["Map\nAssess influence"] --> E6["Sieve\nApply seed influence floor"] --> E7["Map\nVerify arXiv PDF"] --> E8["Map\nScore research relevance"] --> E9["Sieve\nFilter by score"]
+  E9 --> EDB["Consumer\nDatabase writer"]
+  E9 --> EJ["Consumer\nJSONL writer"]
   DB -. "seed items / research context" .-> E1
   DB -. "research context" .-> E8
-  DB -. "research context" .-> R8
-  DB -. "research context" .-> H6
-  NDB -->|"store on request"| DB
-  SDB -->|"store on request"| DB
   EDB -->|"store on request"| DB
-  RDB -->|"store on request"| DB
-  HDB -->|"store on request"| DB
-  Q2 -->|"query stored items"| DB
-
-  NJ --> NFILE[("JSONL output")]
-  SJ --> SFILE[("JSONL output")]
   EJ --> EFILE[("JSONL output")]
+```
+
+collect_posts.py — Reddit posts
+
+```mermaid
+flowchart LR
+  DB[("Database")]
+  R1["Producer\nCollect Reddit posts"] --> R2["Map\nAssess influence"] --> R3["Sieve\nFilter by influence"] --> R4["Sieve\nHeuristic slop filter"] --> R5["Map\nClassify slop"] --> R6["Sieve\nFilter slop"] --> R7["Map\nEnrich from web"] --> R8["Map\nScore research relevance"] --> R9["Sieve\nFilter by score"]
+  R9 --> RDB["Consumer\nDatabase writer"]
+  R9 --> RJ["Consumer\nJSONL writer"]
+  DB -. "research context" .-> R8
+  RDB -->|"store on request"| DB
   RJ --> RFILE[("JSONL output")]
+```
+
+collect_hn_posts.py — Hacker News posts
+
+```mermaid
+flowchart LR
+  DB[("Database")]
+  H1["Producer\nCollect HN posts"] --> H2["Map\nAssess influence"] --> H3["Sieve\nFilter by influence"] --> H4["Transformer\nFetch linked content"] --> H5["Transformer\nSummarize content"] --> H6["Map\nScore research relevance"] --> H7["Sieve\nFilter by score"]
+  H7 --> HDB["Consumer\nDatabase writer"]
+  H7 --> HJ["Consumer\nJSONL writer"]
+  DB -. "research context" .-> H6
+  HDB -->|"store on request"| DB
   HJ --> HFILE[("JSONL output")]
+```
+
+retrieve_content.py — Content retrieval
+
+```mermaid
+flowchart LR
+  DB[("Database")]
+  Q1["Producer\nBuild query from keywords or research needs"] --> Q2["Transformer\nSearch database"] --> Q3["Consumer\nPresent matching items"]
+  DB -. "matching stored items" .-> Q2
 ```
 
 #### 5.2. Core components
@@ -143,7 +156,9 @@ flowchart TB
     - Consumers: database writer and JSONL writer.
   - **`collect_influential_papers_from_scratch.py`** — orchestrator
     - Producer: discover paper candidates.
-    - Maps and sieves: resolve papers, assess influence, verify arXiv PDF, score research relevance, and filter by score.
+    - Transformer: resolve papers.
+    - Maps: assess influence, verify arXiv PDF, and score research relevance.
+    - Sieve: filter by score.
     - Consumers: database writer and JSONL writer.
   - **`collect_influential_papers_from_seeds.py`** — orchestrator
     - Producer: retrieve seed items.
@@ -155,7 +170,9 @@ flowchart TB
     - Consumers: database writer and JSONL writer.
   - **`collect_hn_posts.py`** — orchestrator
     - Producer: collect Hacker News posts.
-    - Maps, sieves, and reducer: assess and filter influence, fetch linked content, summarize content, score research relevance, and filter by score.
+    - Maps: assess influence and score research relevance.
+    - Sieves: filter by influence and filter by score.
+    - Transformers: fetch linked content and summarize content.
     - Consumers: database writer and JSONL writer.
 - **Content retrieval**
   - **`retrieve_content.py`** — orchestrator
@@ -187,9 +204,9 @@ Durations are estimates in weeks for one full-time person. Strong scaling effici
 | M4 | Refactor `collect_recent_influential_papers` | Done | The influential-paper workflow supports web discovery, logging, and database interaction. | 3 | 0.8 |
 | M5 | Refactor `collect_newest_papers` | To do | The newest-paper workflow supports deeper paper analysis, logging, and database interaction. | 4 | 0.8 |
 | M6 | Build web resource autodiscovery | To do | A script discovers web resources, seeds content items, and outlines collectors for those resources. | 4 | 0.8 |
-| M8 | Add benchmark tests | To do | Benchmarks measure collection of 2,000 items in less than one hour and retrieval over 5,000 items in less than one minute. | 1 | 0.8 |
-| M9 | Add concurrent processing | To do | Independent LLM requests and data-collection requests run concurrently where appropriate. | 1 | 0.8 |
-| M10 | Implement tool registry | To do | A tool registry maps typed agent calls to configured modules. | 1 | 0.8 |
+| M7 | Add accuracy tests | To do | Tests measure the accuracy of collection and relevance assessment against human-reviewed expected results. | 1 | 0.8 |
+| M8 | Add concurrent processing | To do | Independent LLM requests and data-collection requests run concurrently where appropriate. | 1 | 0.8 |
+| M9 | Implement tool registry | To do | A tool registry maps typed agent calls to configured modules. | 1 | 0.8 |
 
 ```mermaid
 flowchart TD
@@ -198,10 +215,10 @@ flowchart TD
   M2 --> M4
   M2 --> M5
   M2 --> M6
-  M3 --> M8
-  M4 --> M8
-  M5 --> M8
-  M6 --> M8
+  M3 --> M7
+  M4 --> M7
+  M5 --> M7
+  M6 --> M7
+  M7 --> M8
   M8 --> M9
-  M9 --> M10
 ```
