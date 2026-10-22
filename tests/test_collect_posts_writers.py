@@ -13,7 +13,8 @@ from mourat.utils.config import read_enabled
 def test_post_count_log_reports_in_out_and_filtered(caplog):
     import mourat.scripts.collect_posts as script
 
-    assert script.logger.name == "mourat.scripts.collect_posts"
+    # The script deliberately uses the project-wide logger namespace.
+    assert script.logger.name == "mourat"
     with caplog.at_level("INFO", logger=script.logger.name):
         script._log_post_counts("2", "HeuristicSlopFilter", 12, 8)
 

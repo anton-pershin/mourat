@@ -183,15 +183,22 @@ class TestScriptWiring:
         )
 
         fake_client = MagicMock()
-        fake_client.get.side_effect = lambda url: (
-            _FakeResponse(SAMPLE_FEED)
-            if url == "http://fake/rss"
-            else _FakeResponse(AFFIL_HTML)
-        )
+
+        def get_side_effect(url, **kwargs):
+            return _FakeResponse(
+                SAMPLE_FEED if url == "http://fake/rss" else AFFIL_HTML
+            )
+
+        fake_client.get.side_effect = get_side_effect
+
+        import httpx as real_httpx
+        from types import SimpleNamespace
 
         monkeypatch.setattr(
-            "mourat.scripts.collect_newest_papers.httpx.Client",
-            lambda **kw: fake_client,
+            "mourat.scripts.collect_newest_papers.httpx",
+            SimpleNamespace(
+                Client=lambda **kw: fake_client, Timeout=real_httpx.Timeout
+            ),
         )
         (
             monkeypatch.setattr(
@@ -215,7 +222,7 @@ class TestScriptWiring:
 
         def smart_instantiate(cfg_node, *args, **kwargs):
             target = cfg_node.get("_target_", "") if hasattr(cfg_node, "get") else ""
-            if target == "pydantic_ai.models.openai.OpenAIChatModel":
+            if target.endswith(("OpenAIChatModel", "OpenAIResponsesModel")):
                 return _llm_factory(scripted)
             return real_instantiate(cfg_node, *args, **kwargs)
 
@@ -290,14 +297,21 @@ class TestScriptWiring:
         )
 
         fake_client = MagicMock()
-        fake_client.get.side_effect = lambda url: (
-            _FakeResponse(SAMPLE_FEED)
-            if url == "http://fake/rss"
-            else _FakeResponse(AFFIL_HTML)
-        )
+
+        def get_side_effect(url, **kwargs):
+            return _FakeResponse(
+                SAMPLE_FEED if url == "http://fake/rss" else AFFIL_HTML
+            )
+
+        fake_client.get.side_effect = get_side_effect
+        import httpx as real_httpx
+        from types import SimpleNamespace
+
         monkeypatch.setattr(
-            "mourat.scripts.collect_newest_papers.httpx.Client",
-            lambda **kw: fake_client,
+            "mourat.scripts.collect_newest_papers.httpx",
+            SimpleNamespace(
+                Client=lambda **kw: fake_client, Timeout=real_httpx.Timeout
+            ),
         )
 
         import hydra as _hydra
@@ -306,7 +320,7 @@ class TestScriptWiring:
 
         def smart_instantiate(cfg_node, *args, **kwargs):
             target = cfg_node.get("_target_", "") if hasattr(cfg_node, "get") else ""
-            if target == "pydantic_ai.models.openai.OpenAIChatModel":
+            if target.endswith(("OpenAIChatModel", "OpenAIResponsesModel")):
                 return _llm_factory(scripted)
             return real_instantiate(cfg_node, *args, **kwargs)
 
@@ -367,14 +381,21 @@ class TestScriptWiring:
             "mourat.scripts.collect_newest_papers.create_connection", lambda path: conn2
         )
         fake_client = MagicMock()
-        fake_client.get.side_effect = lambda url: (
-            _FakeResponse(SAMPLE_FEED)
-            if url == "http://fake/rss"
-            else _FakeResponse(AFFIL_HTML)
-        )
+
+        def get_side_effect(url, **kwargs):
+            return _FakeResponse(
+                SAMPLE_FEED if url == "http://fake/rss" else AFFIL_HTML
+            )
+
+        fake_client.get.side_effect = get_side_effect
+        import httpx as real_httpx
+        from types import SimpleNamespace
+
         monkeypatch.setattr(
-            "mourat.scripts.collect_newest_papers.httpx.Client",
-            lambda **kw: fake_client,
+            "mourat.scripts.collect_newest_papers.httpx",
+            SimpleNamespace(
+                Client=lambda **kw: fake_client, Timeout=real_httpx.Timeout
+            ),
         )
 
         import hydra as _hydra
@@ -383,7 +404,7 @@ class TestScriptWiring:
 
         def smart_instantiate(cfg_node, *args, **kwargs):
             target = cfg_node.get("_target_", "") if hasattr(cfg_node, "get") else ""
-            if target == "pydantic_ai.models.openai.OpenAIChatModel":
+            if target.endswith(("OpenAIChatModel", "OpenAIResponsesModel")):
                 return _llm_factory(scripted)
             return real_instantiate(cfg_node, *args, **kwargs)
 
