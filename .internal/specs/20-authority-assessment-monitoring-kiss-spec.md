@@ -64,8 +64,8 @@ flowchart LR
 3. [x] Add per-paper identifier, title, score, or unassessable reason to the monitoring output.
 4. [x] Keep the existing aggregate summary in the implementation.
 5. [x] Run the focused test, full test suite, formatter, and linter.
-6. [ ] Add a monitoring test for exhausted batch retries (T3).
-7. [ ] Add an assertion that the aggregate summary remains in the monitoring output (T4).
+6. [x] Add a monitoring test for exhausted batch retries (T3).
+7. [x] Assert that the aggregate summary remains in the monitoring output (T4).
 
 #### 3.4 Modification summary
 

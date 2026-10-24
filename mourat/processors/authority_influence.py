@@ -147,6 +147,7 @@ class AuthorityInfluenceAssessor(
     ) -> tuple[PaperCandidateCollection, str]:
         t_start = time.monotonic()
         zero_scored: list[str] = []
+        paper_assessments: list[str] = []
         total = len(data.papers)
         triples = [(f"paper_{i}", p) for i, p in enumerate(data.papers)]
         id_to_paper = dict(triples)
@@ -177,15 +178,30 @@ class AuthorityInfluenceAssessor(
 
             for pid, paper in batch:
                 score = scores.get(pid)
+                identifier = (
+                    paper.arxiv_id
+                    or paper.doi
+                    or (paper.urls_seen[0] if paper.urls_seen else paper.title)
+                )
                 if score is None:
                     zero_scored.append(paper.title)
                     paper.influence_score = 0
+                    lines_for_paper = (
+                        f"- {identifier} | {paper.title} | unassessable: "
+                        "missing verdict or batch request failed after retries"
+                    )
                 else:
                     paper.influence_score = int(score)
+                    lines_for_paper = (
+                        f"- {identifier} | {paper.title} | score: {int(score)}"
+                    )
+                paper_assessments.append(lines_for_paper)
 
         lines = [
+            "Per-paper assessments:",
+            *paper_assessments,
             f"Papers: {total}, scored: {total - len(zero_scored)}, "
-            f"zero-scored (unassessable or failed): {len(zero_scored)}"
+            f"zero-scored (unassessable or failed): {len(zero_scored)}",
         ]
         if zero_scored:
             lines.append("Zero-scored papers:")

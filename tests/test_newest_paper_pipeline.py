@@ -357,6 +357,54 @@ class TestAuthorityInfluenceAssessor:
             **kwargs,
         )
 
+    def test_monitoring_reports_each_assessment_with_stable_identifier(self):
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            return ModelResponse(parts=[TextPart(_verdicts_json(ids[:1], score=0))])
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(2)
+        coll.papers[0].arxiv_id = "2401.00000"
+        coll.papers[1].arxiv_id = None
+        coll.papers[1].doi = "10.1234/example"
+        assessor(coll, "t")
+        report = handler.calls[-1][1]
+        assert "2401.00000" in report
+        assert "10.1234/example" in report
+        assert "Paper A" in report
+        assert "score: 0" in report
+        assert "unassessable" in report
+        assert "Papers: 2, scored: 2, zero-scored (unassessable or failed): 0" in report
+
+    @patch("mourat.processors.authority_influence.time.sleep")
+    def test_exhausted_batch_retries_report_each_paper_as_unassessable(
+        self, mock_sleep
+    ):
+        def model_fn(messages, agent):
+            raise RuntimeError("service unavailable")
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+            request_retries=1,
+        )
+        assessor(_make_collection(2), "t")
+        report = handler.calls[-1][1]
+
+        assert "2401.00000" in report
+        assert "Paper A" in report
+        assert "2401.00001" in report
+        assert "Paper B" in report
+        assert report.count(" | unassessable:") == 2
+        assert "after retries" in report
+        assert "Papers: 2, scored: 0, zero-scored (unassessable or failed): 2" in report
+        assert mock_sleep.call_count == 1
+
     def test_scores_matched_by_id_and_batch_splitting(self):
         # T6
         calls = []
