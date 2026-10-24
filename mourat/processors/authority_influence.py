@@ -21,6 +21,8 @@ Verdict failure handling (R4):
 - "LLM recognises nobody": score 0 (user ruling 2026-10-04), not None.
 """
 
+import hashlib
+import json
 import logging
 import time
 
@@ -56,6 +58,19 @@ class AuthorityVerdict(BaseModel):
 
 class AuthorityResult(BaseModel):
     verdicts: list[AuthorityVerdict]
+
+
+def _stable_identifier(paper: PaperCandidate) -> str:
+    """Return a source id, or a stable content-derived id when none exists."""
+    source_id = (
+        paper.arxiv_id or paper.doi or (paper.urls_seen[0] if paper.urls_seen else None)
+    )
+    if source_id:
+        return source_id
+    content = json.dumps(
+        [paper.title, paper.authors], ensure_ascii=False, separators=(",", ":")
+    )
+    return f"content-sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
 
 
 def _render_papers(papers: list[tuple[str, PaperCandidate]]) -> str:
@@ -128,8 +143,10 @@ class AuthorityInfluenceAssessor(
                 time.sleep(self.request_retry_delay_seconds)
         return None
 
-    def _run_batch(self, papers: list[tuple[str, PaperCandidate]]) -> dict[str, int]:
-        """One batch; {} when the whole batch failed after retries (R4-1/2)."""
+    def _run_batch(
+        self, papers: list[tuple[str, PaperCandidate]]
+    ) -> tuple[dict[str, int], bool]:
+        """One batch; return scores and whether a valid response was received."""
         prompt = (
             "Rate each paper's authority influence on a 0-100 scale.\n\n"
             + _render_papers(papers)
@@ -138,18 +155,18 @@ class AuthorityInfluenceAssessor(
         )
         result = self._call_with_retries(prompt, len(papers))
         if result is None:
-            return {}
+            return {}, False
         valid_ids = {pid for pid, _ in papers}
-        return {v.id: v.score for v in result.verdicts if v.id in valid_ids}
+        return {v.id: v.score for v in result.verdicts if v.id in valid_ids}, True
 
     def _run(
         self, data: PaperCandidateCollection
     ) -> tuple[PaperCandidateCollection, str]:
         t_start = time.monotonic()
         zero_scored: list[str] = []
+        paper_assessments: list[str] = []
         total = len(data.papers)
         triples = [(f"paper_{i}", p) for i, p in enumerate(data.papers)]
-        id_to_paper = dict(triples)
 
         n_batches = (len(triples) + self.batch_size - 1) // self.batch_size
         for batch_idx, start in enumerate(range(0, len(triples), self.batch_size), 1):
@@ -163,29 +180,55 @@ class AuthorityInfluenceAssessor(
                 len(triples),
                 batch[0][1].title[:60],
             )
-            scores = self._run_batch(batch)
+            scores, batch_responded = self._run_batch(batch)
 
             missing = [(pid, p) for pid, p in batch if pid not in scores]
+            unassessable_reasons = {
+                pid: (
+                    "missing verdict"
+                    if batch_responded
+                    else "batch request failed after retries"
+                )
+                for pid, _ in missing
+            }
             if missing and scores:
                 # R4-3: ONE follow-up call with only the missing papers.
                 logger.info(
                     "authority follow-up call for %d missing verdicts",
                     len(missing),
                 )
-                follow_up = self._run_batch(missing)
+                follow_up, follow_up_responded = self._run_batch(missing)
                 scores.update(follow_up)
+                for pid, _ in missing:
+                    if pid in follow_up:
+                        unassessable_reasons.pop(pid, None)
+                    elif not follow_up_responded:
+                        unassessable_reasons[pid] = (
+                            "follow-up request failed after retries"
+                        )
 
             for pid, paper in batch:
                 score = scores.get(pid)
+                identifier = _stable_identifier(paper)
                 if score is None:
                     zero_scored.append(paper.title)
                     paper.influence_score = 0
+                    reason = unassessable_reasons[pid]
+                    lines_for_paper = (
+                        f"- {identifier} | {paper.title} | unassessable: {reason}"
+                    )
                 else:
                     paper.influence_score = int(score)
+                    lines_for_paper = (
+                        f"- {identifier} | {paper.title} | score: {int(score)}"
+                    )
+                paper_assessments.append(lines_for_paper)
 
         lines = [
+            "Per-paper assessments:",
+            *paper_assessments,
             f"Papers: {total}, scored: {total - len(zero_scored)}, "
-            f"zero-scored (unassessable or failed): {len(zero_scored)}"
+            f"zero-scored (unassessable or failed): {len(zero_scored)}",
         ]
         if zero_scored:
             lines.append("Zero-scored papers:")

@@ -357,6 +357,94 @@ class TestAuthorityInfluenceAssessor:
             **kwargs,
         )
 
+    def test_monitoring_reports_each_assessment_with_stable_identifier(self):
+        calls = []
+
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            calls.append(ids)
+            if len(calls) == 1:
+                return ModelResponse(parts=[TextPart(_verdicts_json(ids[:1], score=0))])
+            return ModelResponse(
+                parts=[TextPart(_verdicts_json(ids, score=0, skip=ids))]
+            )
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(2)
+        coll.papers[0].arxiv_id = "2401.00000"
+        coll.papers[1].arxiv_id = None
+        coll.papers[1].doi = "10.1234/example"
+        assessor(coll, "t")
+        report = handler.calls[-1][1]
+        assert "2401.00000 | Paper A | score: 0" in report
+        assert "10.1234/example | Paper B | unassessable: missing verdict" in report
+        assert "after retries" not in report
+        assert "Papers: 2, scored: 1, zero-scored (unassessable or failed): 1" in report
+
+    def test_papers_without_source_ids_get_stable_content_identifiers(self):
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            return ModelResponse(parts=[TextPart(_verdicts_json(ids, score=11))])
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(2, with_ids=False)
+        coll.papers[0].title = "Duplicate title"
+        coll.papers[1].title = "Duplicate title"
+        coll.papers[0].authors = ["Author One"]
+        coll.papers[1].authors = ["Author Two"]
+        assessor(coll, "first")
+        first_report = handler.calls[-1][1]
+        assessor(coll, "second")
+        second_report = handler.calls[-1][1]
+
+        first_ids = [
+            line.split(" | ")[0][2:]
+            for line in first_report.splitlines()
+            if "Duplicate title" in line
+        ]
+        second_ids = [
+            line.split(" | ")[0][2:]
+            for line in second_report.splitlines()
+            if "Duplicate title" in line
+        ]
+        assert len(first_ids) == 2
+        assert first_ids[0] != first_ids[1]
+        assert all(identifier.startswith("content-sha256:") for identifier in first_ids)
+        assert first_ids == second_ids
+
+    @patch("mourat.processors.authority_influence.time.sleep")
+    def test_exhausted_batch_retries_report_each_paper_as_unassessable(
+        self, mock_sleep
+    ):
+        def model_fn(messages, agent):
+            raise RuntimeError("service unavailable")
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+            request_retries=1,
+        )
+        assessor(_make_collection(2), "t")
+        report = handler.calls[-1][1]
+
+        assert "2401.00000" in report
+        assert "Paper A" in report
+        assert "2401.00001" in report
+        assert "Paper B" in report
+        assert report.count(" | unassessable:") == 2
+        assert "after retries" in report
+        assert "Papers: 2, scored: 0, zero-scored (unassessable or failed): 2" in report
+        assert mock_sleep.call_count == 1
+
     def test_scores_matched_by_id_and_batch_splitting(self):
         # T6
         calls = []
@@ -439,11 +527,17 @@ class TestAuthorityInfluenceAssessor:
                 )
             raise RuntimeError("follow-up fails")
 
-        assessor = self._assessor(model_fn)
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
         result = assessor(_make_collection(3), "t")
         assert result.papers[0].influence_score == 50
         assert result.papers[1].influence_score == 50
         assert result.papers[2].influence_score == 0
+        assert "paper_2" not in handler.calls[-1][1]
+        assert "follow-up request failed after retries" in handler.calls[-1][1]
 
     def test_hallucinated_id_discarded(self):
         # T11
