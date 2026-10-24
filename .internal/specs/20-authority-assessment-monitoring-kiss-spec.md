@@ -12,11 +12,13 @@
 
 **T1 (R1, B1).** A paper with an arXiv ID receives a valid score of `0`. Assert that monitoring includes its identifier, title, and `score: 0`.
 
-**T2 (R1, B2).** A paper with a DOI has no verdict. Assert that monitoring includes its identifier, title, and `unassessable` with a reason.
+**T2 (R1, B2).** The first response omits one paper, and its follow-up response also omits that paper. Assert that its per-paper entry reports `unassessable: missing verdict` and that it does not report a retry-failure reason.
 
-**T3 (R1, B2).** The batch request exhausts its retries. Assert that monitoring reports each affected paper as `unassessable` with a reason. *(Not yet covered by a dedicated monitoring test.)*
+**T3 (R1, B2).** The batch request exhausts its retries. Assert that each affected paper has a distinct `unassessable` entry with a batch-retry failure reason.
 
 **T4 (R1).** Assert that the per-paper entries do not remove or change the existing aggregate summary.
+
+**T5 (R1).** Papers without an arXiv ID, DOI, or URL receive a stable content-derived identifier. Assert that equal titles with different authors receive distinct identifiers and repeated runs produce the same identifiers.
 
 ### 3. Implementation plan
 
@@ -59,17 +61,16 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [x] Add a regression test for a valid zero score and a missing verdict.
-2. [x] Run the focused test before implementation and confirm it fails because per-paper monitoring is missing.
-3. [x] Add per-paper identifier, title, score, or unassessable reason to the monitoring output.
-4. [x] Keep the existing aggregate summary in the implementation.
-5. [x] Run the focused test, full test suite, formatter, and linter.
-6. [x] Add a monitoring test for exhausted batch retries (T3).
-7. [x] Assert that the aggregate summary remains in the monitoring output (T4).
+1. [x] Add regression tests for a valid zero score, missing verdict, retry exhaustion, aggregate summary retention, and candidates without source identifiers.
+2. [x] Run the focused test before implementation and confirm that it fails because the missing-verdict reason is inaccurate and source-less identifiers are not unique.
+3. [x] Add per-paper identifier, title, score, or cause-specific unassessable reason to monitoring output.
+4. [x] Use arXiv ID, DOI, or URL as the identifier; otherwise derive a stable identifier from title and authors.
+5. [x] Keep the existing aggregate summary.
+6. [x] Run the assessor tests, full test suite, formatter, and linter.
 
 #### 3.4 Modification summary
 
 | File | Action |
 |------|--------|
-| `mourat/processors/authority_influence.py` | Modified: add per-paper assessment entries to monitoring output while retaining aggregate summary. |
-| `tests/test_newest_paper_pipeline.py` | Modified: test monitoring with a zero score and an unassessable paper. |
+| `mourat/processors/authority_influence.py` | Modified: report source IDs or stable content-derived IDs and use distinct reasons for missing verdicts and exhausted batch requests. |
+| `tests/test_newest_paper_pipeline.py` | Modified: cover missing verdicts, retry exhaustion, aggregate-summary retention, and stable identifiers for source-less papers. |
