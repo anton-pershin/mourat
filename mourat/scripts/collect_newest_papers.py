@@ -212,20 +212,28 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
     # Step 8: writers, independently enabled (both off = nothing written)
     step_id = "8"
     db_writer_cfg = cfg.db_writer.copy()
-    if read_enabled(db_writer_cfg):
-        conn = create_connection(db_path)
-        try:
+    jsonl_writer_cfg = cfg.jsonl_writer.copy()
+    db_enabled = read_enabled(db_writer_cfg)
+    jsonl_enabled = read_enabled(jsonl_writer_cfg)
+    needs_conn = db_enabled or (
+        jsonl_enabled and bool(jsonl_writer_cfg.get("skip_existing", False))
+    )
+    writer_conn = create_connection(db_path) if needs_conn else None
+    try:
+        if db_enabled:
             db_writer = hydra.utils.instantiate(db_writer_cfg)(
-                monitoring_handler, conn=conn
+                monitoring_handler, conn=writer_conn
             )
             db_writer(filtered, step_id=step_id)
-        finally:
-            conn.close()
 
-    jsonl_writer_cfg = cfg.jsonl_writer.copy()
-    if read_enabled(jsonl_writer_cfg):
-        jsonl_writer = hydra.utils.instantiate(jsonl_writer_cfg)(monitoring_handler)
-        jsonl_writer(filtered, step_id=step_id)
+        if jsonl_enabled:
+            jsonl_writer = hydra.utils.instantiate(jsonl_writer_cfg)(
+                monitoring_handler, conn=writer_conn
+            )
+            jsonl_writer(filtered, step_id=step_id)
+    finally:
+        if writer_conn is not None:
+            writer_conn.close()
 
     logger.info(
         "Pipeline complete: %d scored, %d after filter",

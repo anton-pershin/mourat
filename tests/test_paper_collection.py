@@ -725,6 +725,123 @@ class TestJsonlWriter:
         finally:
             os.unlink(path)
 
+    def test_skip_existing_disabled_writes_without_database(self, tmp_path):
+        # T1 (R1, B1, R6): the default needs no database connection.
+        handler = _make_monitoring_handler()
+        path = tmp_path / "papers.jsonl"
+        paper = _make_scored_paper(80)
+        writer = JsonlWriter(handler, str(path), skip_existing=False)
+
+        result = writer(ScoredPaperCollection(papers=[paper]), "4")
+
+        assert result.papers == [paper]
+        assert len(path.read_text(encoding="utf-8").splitlines()) == 1
+
+    def test_skip_existing_filters_using_shared_connection(self, db_conn, tmp_path):
+        # T2 (R1, B2, R2, R3): existing rows are filtered through the passed connection.
+        from mourat.database import content_item as ci
+
+        handler = _make_monitoring_handler()
+        existing = _make_scored_paper(80, arxiv_id="1706.03762")
+        existing.paper.arxiv_id = "1706.03762"
+        new = _make_scored_paper(70, title="A New Paper", arxiv_id="2401.00001")
+        ci.create_source_type(db_conn, "paper", "Paper", "Academic paper")
+        ci.create_platform(db_conn, "web", "Web", "Discovered via web")
+        ci.create_influence_metric(db_conn, "citations", "Citations", "Citation count")
+        ci.create_content_item(
+            db_conn,
+            id="paper_arxiv-1706.03762",
+            name=existing.paper.title,
+            source_type_id="paper",
+            platform_id="web",
+            influence_metric_id="citations",
+            description=existing.paper.abstract,
+        )
+        path = tmp_path / "papers.jsonl"
+        writer = JsonlWriter(
+            handler,
+            str(path),
+            skip_existing=True,
+            conn=db_conn,
+        )
+
+        result = writer(ScoredPaperCollection(papers=[existing, new]), "4")
+
+        assert result.papers == [new]
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        assert [record["title"] for record in records] == ["A New Paper"]
+
+    def test_skip_existing_uses_arxiv_and_title_identifiers(self, db_conn, tmp_path):
+        # T3 (R2): both identifier forms use _content_item_id semantics.
+        from mourat.database import content_item as ci
+
+        for item_id, title in [
+            ("paper_arxiv-1706.03762", "Attention Is All You Need"),
+            ("paper_title_only", "Title Only"),
+        ]:
+            ci.create_source_type(db_conn, f"source_{item_id}", "Paper", "Paper")
+            ci.create_platform(db_conn, f"platform_{item_id}", "Web", "Web")
+            ci.create_influence_metric(
+                db_conn, f"metric_{item_id}", "Citations", "Citations"
+            )
+            ci.create_content_item(
+                db_conn,
+                id=item_id,
+                name=title,
+                source_type_id=f"source_{item_id}",
+                platform_id=f"platform_{item_id}",
+                influence_metric_id=f"metric_{item_id}",
+                description="existing",
+            )
+        existing_arxiv = _make_scored_paper(80, arxiv_id="1706.03762")
+        existing_arxiv.paper.arxiv_id = "1706.03762"
+        existing_title = _make_scored_paper(
+            70, title="Title Only", urls_seen=[], arxiv_id=None
+        )
+        path = tmp_path / "papers.jsonl"
+        writer = JsonlWriter(
+            monitoring_handler=_make_monitoring_handler(),
+            output_path=str(path),
+            skip_existing=True,
+            conn=db_conn,
+        )
+
+        result = writer(
+            ScoredPaperCollection(papers=[existing_arxiv, existing_title]), "4"
+        )
+
+        assert result.papers == []
+
+    def test_skip_existing_reports_written_and_skipped_counts(self, db_conn, tmp_path):
+        # T4 (R4, R5): return the filtered collection and report both counts.
+        from mourat.database import content_item as ci
+
+        ci.create_source_type(db_conn, "paper", "Paper", "Paper")
+        ci.create_platform(db_conn, "web", "Web", "Web")
+        ci.create_influence_metric(db_conn, "citations", "Citations", "Citations")
+        ci.create_content_item(
+            db_conn,
+            id="paper_arxiv-1706.03762",
+            name="Attention Is All You Need",
+            source_type_id="paper",
+            platform_id="web",
+            influence_metric_id="citations",
+            description="existing",
+        )
+        handler = _make_monitoring_handler()
+        path = tmp_path / "papers.jsonl"
+        existing = _make_scored_paper(80, arxiv_id="1706.03762")
+        existing.paper.arxiv_id = "1706.03762"
+        new = _make_scored_paper(70, title="New Paper", arxiv_id="2401.00001")
+        result = JsonlWriter(handler, str(path), skip_existing=True, conn=db_conn)(
+            ScoredPaperCollection(papers=[existing, new]),
+            "4",
+        )
+
+        assert len(result.papers) == 1
+        assert "written: 1" in handler.calls[0][1]
+        assert "skipped: 1" in handler.calls[0][1]
+
 
 # --- Script attribute loading ---
 

@@ -13,11 +13,11 @@
 
 ### 2. Tests
 
-- **T1 (R1, B1):** Create a `JsonlWriter` with duplicate filtering disabled and no database connection. Write a collection containing one paper. Verify that the paper is written and the returned collection contains it.
-- **T2 (R1, B2, R2, R3):** Create a database containing an existing paper. Create a `JsonlWriter` with duplicate filtering enabled and pass the existing database connection. Write a collection containing the existing paper and a new paper. Verify that only the new paper is written, the returned collection contains only the new paper, and no second database connection is opened.
-- **T3 (R2):** Verify that duplicate detection uses the shared `_content_item_id` derivation for a paper with an arXiv ID and for a paper without an arXiv ID using the normalized title fallback.
-- **T4 (R4, R5):** Verify that the writer returns the filtered collection and its monitoring output reports both written and skipped counts.
-- **T5 (R6):** Run the existing JSONL writer tests and relevant paper-pipeline tests without duplicate filtering. Verify that they remain green and that existing output records are unchanged.
+- **T1 (R1, B1):** `tests/test_paper_collection.py::TestJsonlWriter::test_skip_existing_disabled_writes_without_database` creates a `JsonlWriter` with duplicate filtering disabled and no database connection. It verifies that the paper is written and the returned collection contains it.
+- **T2 (R1, B2, R2, R3):** `tests/test_paper_collection.py::TestJsonlWriter::test_skip_existing_filters_using_shared_connection` creates a database containing an existing paper, passes its connection to the writer, and verifies that only the new paper is written.
+- **T3 (R2):** `tests/test_paper_collection.py::TestJsonlWriter::test_skip_existing_uses_arxiv_and_title_identifiers` verifies arXiv-based and title-based identifiers.
+- **T4 (R4, R5):** `tests/test_paper_collection.py::TestJsonlWriter::test_skip_existing_reports_written_and_skipped_counts` verifies the filtered return collection and monitoring counts.
+- **T5 (R6):** Existing `TestJsonlWriter` tests and the paper pipeline tests in `tests/test_paper_collection.py` and `tests/test_newest_paper_script.py` verify unchanged behavior when duplicate filtering is disabled.
 
 All tests use temporary databases and files. They do not make network requests.
 
@@ -66,18 +66,18 @@ The existing paper collection pipelines keep their database connection open whil
 
 #### 3.4 Todo list
 
-1. [ ] Write the tests.
-2. [ ] Run all the tests and ensure that the new tests fail.
-3. [ ] Add an explicit `skip_existing` option to `JsonlWriter`, disabled by default.
-4. [ ] Add an optional database connection parameter to `JsonlWriter`.
-5. [ ] Reuse `_content_item_id` from `ContentItemDbWriter` for duplicate checks.
-6. [ ] Filter existing papers before writing JSONL records.
-7. [ ] Return the filtered collection and report written and skipped counts.
-8. [ ] Pass the existing pipeline database connection to `JsonlWriter` when configured.
-9. [ ] Update Hydra configuration with the new option while preserving the current default behavior.
-10. [ ] Run the focused tests, relevant paper-pipeline tests, the full test suite, and linters.
-11. [ ] Update this spec with completed checklist items, actual test names, and the final modification summary.
-12. [ ] Run the manual acceptance check with duplicate filtering enabled and disabled.
+1. [x] Write the tests.
+2. [x] Run all the tests and ensure that the new tests fail.
+3. [x] Add an explicit `skip_existing` option to `JsonlWriter`, disabled by default.
+4. [x] Add an optional database connection parameter to `JsonlWriter`.
+5. [x] Reuse `_content_item_id` from `ContentItemDbWriter` for duplicate checks.
+6. [x] Filter existing papers before writing JSONL records.
+7. [x] Return the filtered collection and report written and skipped counts.
+8. [x] Pass the existing pipeline database connection to `JsonlWriter` when configured.
+9. [x] Update Hydra configuration with the new option while preserving the current default behavior.
+10. [x] Run the focused tests, relevant paper-pipeline tests, the full test suite, and linters.
+11. [x] Update this spec with completed checklist items, actual test names, and the final modification summary.
+12. [ ] Run the manual live acceptance check with duplicate filtering enabled and disabled.
 
 #### 3.5 Modification summary
 
