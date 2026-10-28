@@ -27,6 +27,9 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 source = "versioningit"
 
+[tool.hatch.build.targets.wheel]
+packages = ["mourat", "comourat"]
+
 [tool.versioningit]
 default-version = "0.0.0"
 
