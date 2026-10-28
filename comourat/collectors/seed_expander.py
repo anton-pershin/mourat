@@ -15,12 +15,14 @@ GEN_SEARCH = "relevance_search"
 GEN_BACKWARD = "backward_references"
 
 
-def candidate_from_record(record: PaperRecord) -> PaperCandidate | None:
+def candidate_from_record(
+    record: PaperRecord, candidate_model=PaperCandidate
+) -> PaperCandidate | None:
     if not record.title or (
         record.identity.arxiv_id is None and record.identity.doi is None
     ):
         return None
-    return PaperCandidate(
+    return candidate_model(
         title=record.title,
         authors=record.authors,
         description=record.abstract,
@@ -44,7 +46,9 @@ class SeedExpanderCore:
         search_budget: int = 25,
         backward_budget: int = 100,
         openalex_client: PaperGraphClient | None = None,
+        candidate_model=PaperCandidate,
     ) -> None:
+        self.candidate_model = candidate_model
         self.client = paper_graph_client or openalex_client
         if self.client is None:
             raise ValueError("paper_graph_client is required")
@@ -105,7 +109,7 @@ class SeedExpanderCore:
                 (GEN_BACKWARD, self._backward(seed)),
             ):
                 for record in records:
-                    candidate = candidate_from_record(record)
+                    candidate = candidate_from_record(record, self.candidate_model)
                     if candidate is None:
                         continue
                     key = self._key(record)

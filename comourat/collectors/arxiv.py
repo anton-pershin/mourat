@@ -34,7 +34,7 @@ def extract_arxiv_id(link: str) -> str | None:
     return m.group(1) if m else None
 
 
-def candidate_from_entry(entry) -> PaperCandidate:
+def candidate_from_entry(entry, candidate_model=PaperCandidate):
     """One RSS item -> PaperCandidate.
 
     The feed items carry no per-item date (feedparser's published_parsed is
@@ -54,7 +54,7 @@ def candidate_from_entry(entry) -> PaperCandidate:
         m = _ANNOUNCE_TYPE_RE.search(entry.description)
         announce_type = m.group(1).lower() if m else None
 
-    return PaperCandidate(
+    candidate = candidate_model(
         title=title,
         authors=authors,
         description=abstract,
@@ -62,6 +62,15 @@ def candidate_from_entry(entry) -> PaperCandidate:
         arxiv_id=extract_arxiv_id(link),
         publication_date=None,
     )
+    # provenance is an application-level concern: only set it when the
+    # candidate model carries the field (mourat's extended model does).
+    if "provenance" in type(candidate).model_fields:
+        candidate.provenance = ["arxiv_rss"]
+    # announce_type is an application-level concern: only set it when the
+    # candidate model carries the field (mourat's extended model does).
+    if announce_type is not None and "announce_type" in type(candidate).model_fields:
+        candidate.announce_type = announce_type
+    return candidate
 
 
 class ArxivPaperCollectorCore:
@@ -81,7 +90,11 @@ class ArxivPaperCollectorCore:
         end_date: str | None = None,  # YYYY-MM-DD
         max_results: int | None = None,
         keywords: str | None = None,
+        candidate_model: type[PaperCandidate] = PaperCandidate,
+        feed_parser=None,
     ) -> None:
+        self.candidate_model = candidate_model
+        self.feed_parser = feed_parser if feed_parser is not None else feedparser.parse
         self.http_client = http_client
         self.api_url = api_url
         if start_date is None:
@@ -106,7 +119,9 @@ class ArxivPaperCollectorCore:
     def collect(self) -> PaperCandidateCollection:
         return self.mode_to_handler[self.mode]()
 
-    def filter_new_submissions(self, output: PaperCandidateCollection) -> tuple[PaperCandidateCollection, int, int]:
+    def filter_new_submissions(
+        self, output: PaperCandidateCollection
+    ) -> tuple[PaperCandidateCollection, int, int]:
         """Keep only 'new' announce-type entries; returns (out, kept, excluded)."""
         collected_count = len(output.papers)
         kept = [paper for paper in output.papers if paper.announce_type == "new"]
@@ -115,9 +130,12 @@ class ArxivPaperCollectorCore:
 
     def _handle_newest_mode(self) -> PaperCandidateCollection:
         r: httpx.Response = self.http_client.get(self.api_url)
-        feed = feedparser.parse(r.text)
+        feed = self.feed_parser(r.text)
         return PaperCandidateCollection(
-            papers=[candidate_from_entry(entry) for entry in feed.entries]
+            papers=[
+                candidate_from_entry(entry, self.candidate_model)
+                for entry in feed.entries
+            ]
         )
 
     def _handle_most_relevant_mode(self) -> PaperCandidateCollection:

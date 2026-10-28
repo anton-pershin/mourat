@@ -88,7 +88,6 @@ class ArxivHtmlAffiliationFetcherCore:
     ) -> None:
         self.http_client = http_client
         self.request_delay_seconds = request_delay_seconds
-        super().__init__(monitoring_handler)
 
     def _fetch_first_publication_date(self, arxiv_id: str) -> str | None:
         """First-publication date (YYYY-MM-DD) from the Atom API; None on failure.

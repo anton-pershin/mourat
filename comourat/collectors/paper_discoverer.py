@@ -55,6 +55,7 @@ class PaperDiscovererCore:
         model: Model,
         attribute_description: str,
         constraints_description: str = "",
+        candidate_model: type = None,
         system_prompt: str = SYSTEM_PROMPT,
         model_settings: dict | None = None,
         retries: int | None = None,
@@ -65,9 +66,11 @@ class PaperDiscovererCore:
         self.attribute_description = attribute_description
         self.constraints_description = constraints_description
 
+        if candidate_model is None:
+            candidate_model = PaperCandidateCollection
         self.agent: Agent = Agent(
             model,
-            output_type=PaperCandidateCollection,
+            output_type=candidate_model,
             system_prompt=system_prompt,
             model_settings=model_settings,
             retries=retries,

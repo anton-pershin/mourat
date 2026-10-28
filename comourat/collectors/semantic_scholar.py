@@ -9,7 +9,6 @@ import httpx
 
 from comourat.models import PaperInfo, PaperInfoCollection
 
-
 logger = logging.getLogger(__name__)
 
 SemanticScholarSearchMode: TypeAlias = Literal[

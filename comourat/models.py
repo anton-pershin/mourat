@@ -13,7 +13,6 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
-
 # -- Paper graph models (moved from mourat.clients.paper_graph) --
 
 _ARXIV_DOI_RE = re.compile(r"^10\.48550/arxiv\.(.+)$", re.IGNORECASE)
@@ -100,6 +99,7 @@ class PaperGraphClient(Protocol):
 
 # -- Post models --
 
+
 class RedditPostInfo(BaseModel):
     """A single Reddit post."""
 
@@ -143,6 +143,7 @@ class HNPostCollection(BaseModel):
 
 # -- Paper candidate models --
 
+
 class PaperCandidate(BaseModel):
     """A candidate paper discovered or collected, before resolution.
 
@@ -178,9 +179,7 @@ class PaperInfo(BaseModel):
     title: str = Field(description="Title of the paper")
     link: str = Field(description="Arxiv URL of the paper")
     abstract: str = Field(description="Abstract of the paper")
-    citation_count: int | None = Field(
-        description="Number of citations", default=None
-    )
+    citation_count: int | None = Field(description="Number of citations", default=None)
     authors: list[str] | None = Field(description="Authors of the paper", default=None)
     publication_date: date | None = Field(
         description="Date of publication", default=None
