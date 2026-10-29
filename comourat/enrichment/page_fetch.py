@@ -21,7 +21,8 @@ class PageFetcher:
     """Fetches a page URL via the configured session and extracts content.
 
     Returns None when the fetch fails, extraction fails, or nothing is
-    extractable; the caller decides how to treat a None result.
+    extractable; the caller decides how to treat a None result. The
+    extractor is injectable (defaults to `extract_main_content`).
     """
 
     def __init__(
@@ -29,11 +30,13 @@ class PageFetcher:
         http_session=None,
         proxy: str | None = None,
         timeout: int = 30,
+        extractor=extract_main_content,
     ) -> None:
         self.session = http_session if http_session is not None else requests.Session()
         if proxy:
             self.session.proxies.update({"http": proxy, "https": proxy})
         self.timeout = timeout
+        self.extractor = extractor
 
     def fetch(self, url: str) -> str | None:
         try:
@@ -47,7 +50,7 @@ class PageFetcher:
             logger.debug("fetch failed for %s: %s", url, exc)
             return None
         try:
-            content = extract_main_content(resp.text)
+            content = self.extractor(resp.text)
         except Exception:
             logger.exception("content extraction failed unexpectedly for %s", url)
             return None

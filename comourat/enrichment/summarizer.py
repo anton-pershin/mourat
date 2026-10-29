@@ -13,10 +13,10 @@ from pydantic_ai.models import Model
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-You summarize HackerNews-linked articles for a research-assistant pipeline.
+DEFAULT_SYSTEM_PROMPT = """\
+You summarize articles for a research-assistant pipeline.
 
-Given the post title and the article content, produce a COMPACT summary of
+Given the title and the article content, produce a COMPACT summary of
 the article: 2-4 self-contained sentences describing what it is about.
 Do not add information that is not in the content.
 """
@@ -28,21 +28,9 @@ class _SummaryOutput(BaseModel):
     summary: str
 
 
-class _StringLLMAgent:
-    """Test adapter for a string-returning stub; production uses pydantic-ai Agent."""
-
-    def __init__(self, llm):
-        self.llm = llm
-
-    def run_sync(self, prompt):
-        raw = self.llm.ask(prompt)
-        parsed = json.loads(raw)
-        return SimpleNamespace(output=_SummaryOutput.model_validate(parsed))
-
-
 def _create_summary_agent(
     model: Model,
-    system_prompt: str = SYSTEM_PROMPT,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     model_settings: dict | None = None,
 ) -> Agent:
     """Create an agent with structured summary output."""
@@ -55,18 +43,19 @@ def _create_summary_agent(
     )
 
 
-def summarize_with_retries(
+def summarize_with_events(
     agent,
     prompt: str,
     retries: int = 1,
     label: str = "",
-) -> str:
+) -> tuple[str, list[dict]]:
     """Run one structured summarization call with bounded retries.
 
-    Returns the stripped summary; raises RuntimeError after exhaustion.
-    Failed requests or invalid outputs are retried up to `retries` times.
-    One log line per attempt, labelled with `label`.
+    Returns (summary, events). Each event is a dict with keys
+    `attempt`, `outcome` ("success" or "failed"), `duration_s`, and, for
+    failures, `error`. Raises RuntimeError after exhaustion.
     """
+    events: list[dict] = []
     last_error = None
     for attempt in range(retries + 1):
         started_at = perf_counter()
@@ -75,23 +64,23 @@ def summarize_with_retries(
             summary = result.output.summary
             if not isinstance(summary, str) or not summary.strip():
                 raise ValueError("empty summary")
-            logger.info(
-                "summarize '%s' | success | attempt %d/%d | %.2fs",
-                label,
-                attempt + 1,
-                retries + 1,
-                perf_counter() - started_at,
+            events.append(
+                {
+                    "attempt": attempt + 1,
+                    "outcome": "success",
+                    "duration_s": perf_counter() - started_at,
+                }
             )
-            return summary.strip()
+            return summary.strip(), events
         except Exception as exc:
             last_error = exc
-            logger.warning(
-                "summarize '%s' | failed | attempt %d/%d | %.2fs | %s",
-                label,
-                attempt + 1,
-                retries + 1,
-                perf_counter() - started_at,
-                exc,
+            events.append(
+                {
+                    "attempt": attempt + 1,
+                    "outcome": "failed",
+                    "duration_s": perf_counter() - started_at,
+                    "error": exc,
+                }
             )
     raise RuntimeError(
         f"summarizer failed for '{label}' after {retries + 1} attempts: {last_error}"

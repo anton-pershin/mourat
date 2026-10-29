@@ -9,7 +9,7 @@ ids are silently discarded. Fail-open with score 0: this score is not a
 filter anywhere on the path, so a paper never receives a score that removes
 it from the pipeline.
 
-Verdict failure handling (R4):
+Verdict failure handling:
 - (1) transport error / (2) malformed response on the whole batch: bounded
   retry loop (same batch re-sent up to `request_retries` attempts with
   `request_retry_delay_seconds` between attempts); after exhaustion every
@@ -18,13 +18,12 @@ Verdict failure handling (R4):
   call containing only the missing papers (same retry loop); if that also
   fails, those papers continue with score 0 and a warning.
 - (4) verdict for an id not in the batch: silently discarded.
-- "LLM recognises nobody": score 0 (user ruling 2026-10-04), not None.
+- "LLM recognises nobody": score 0, not None.
 """
 
 import hashlib
 import json
 import logging
-import time
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -32,7 +31,7 @@ from pydantic_ai.models import Model
 
 from comourat.models import PaperCandidate, PaperCandidateCollection
 
-logger = logging.getLogger(__name__)
+time = __import__("time")
 
 DEFAULT_SYSTEM_PROMPT = (
     "You assess the authority influence of research papers. For each paper "
@@ -108,6 +107,7 @@ class AuthorityInfluenceAssessorCore:
             output_type=AuthorityResult,
             system_prompt=system_prompt,
         )
+        self.logger = logging.getLogger(__name__)
         self.batch_size = batch_size
         self.request_retries = request_retries
         self.request_retry_delay_seconds = request_retry_delay_seconds
@@ -120,20 +120,20 @@ class AuthorityInfluenceAssessorCore:
                 return result
             except Exception as exc:
                 if attempt >= self.request_retries:
-                    logger.warning(
+                    self.logger.warning(
                         "authority batch of %d papers failed after %d attempts: %s",
                         n_papers,
                         attempt + 1,
                         exc,
                     )
                     return None
-                logger.warning(
+                self.logger.warning(
                     "authority batch attempt %d/%d failed: %s",
                     attempt + 1,
                     self.request_retries + 1,
                     exc,
                 )
-                time.sleep(self.request_retry_delay_seconds)
+                self.time.sleep(self.request_retry_delay_seconds)
         return None
 
     def _run_batch(
@@ -164,7 +164,7 @@ class AuthorityInfluenceAssessorCore:
         n_batches = (len(triples) + self.batch_size - 1) // self.batch_size
         for batch_idx, start in enumerate(range(0, len(triples), self.batch_size), 1):
             batch = triples[start : start + self.batch_size]
-            logger.info(
+            self.logger.info(
                 "authority batch %d/%d | papers %d-%d of %d | first: '%s'",
                 batch_idx,
                 n_batches,
@@ -186,7 +186,7 @@ class AuthorityInfluenceAssessorCore:
             }
             if missing and scores:
                 # ONE follow-up call with only the missing papers.
-                logger.info(
+                self.logger.info(
                     "authority follow-up call for %d missing verdicts",
                     len(missing),
                 )

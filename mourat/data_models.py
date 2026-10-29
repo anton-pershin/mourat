@@ -278,7 +278,6 @@ class ScoredRedditPostCollection(BaseModel):
     posts: list[ScoredRedditPost]
 
 
-
 class PaperCandidate(_ComouratPaperCandidate):
     """Mourat's extended paper candidate.
 
