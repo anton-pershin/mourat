@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from mourat.clients.arxiv import ArxivClient
-from mourat.clients.openalex import DEFAULT_SELECT_FIELDS, OpenAlexClient
-from mourat.clients.paper_graph import PaperIdentity, normalize_arxiv_id, normalize_doi
+from comourat.clients.arxiv import ArxivClient
+from comourat.clients.openalex import DEFAULT_SELECT_FIELDS, OpenAlexClient
+from comourat.clients.paper_graph import PaperIdentity, normalize_arxiv_id, normalize_doi
 
 
 def _make_client(http_client: MagicMock, **kwargs) -> OpenAlexClient:

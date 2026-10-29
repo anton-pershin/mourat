@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from comourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.data_models import (
     ContentItem,
     ContentItemCollection,

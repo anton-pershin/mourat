@@ -14,7 +14,7 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig
 
-from mourat.clients.hn_algolia import HNAlgoliaClient
+from comourat.clients.hn_algolia import HNAlgoliaClient
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.common import get_config_path
 

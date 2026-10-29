@@ -12,7 +12,7 @@ import logging
 import time
 
 from mourat.base import Function
-from mourat.clients.arxiv import ARXIV_PDF_URL_TEMPLATE, ArxivClient
+from comourat.clients.arxiv import ARXIV_PDF_URL_TEMPLATE, ArxivClient
 from mourat.data_models import ResolvedPaperCollection
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.similarity import titles_match

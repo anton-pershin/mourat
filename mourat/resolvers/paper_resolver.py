@@ -7,8 +7,8 @@ import re
 import time
 
 from mourat.base import Function
-from mourat.clients.arxiv import ArxivClient
-from mourat.clients.paper_graph import PaperGraphClient, PaperRecord
+from comourat.clients.arxiv import ArxivClient
+from comourat.clients.paper_graph import PaperGraphClient, PaperRecord
 from mourat.data_models import (
     PaperCandidateCollection,
     ResolvedPaper,

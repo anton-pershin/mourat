@@ -114,7 +114,7 @@ def test_import_post_slop_classifier():
 def test_import_clients():
     """OpenAlexClient and ArxivClient should be importable independently."""
     subprocess.check_call(
-        [sys.executable, "-c", "from mourat.clients import OpenAlexClient, ArxivClient"]
+        [sys.executable, "-c", "from comourat.clients import OpenAlexClient, ArxivClient"]
     )
 
 
