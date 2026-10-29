@@ -112,6 +112,7 @@ class AuthorityInfluenceAssessorCore:
             system_prompt=system_prompt,
         )
         self.logger = logging.getLogger(__name__)
+        self.time = time  # injectable patch point (tests may replace it)
         self.batch_size = batch_size
         self.request_retries = request_retries
         self.request_retry_delay_seconds = request_retry_delay_seconds

@@ -54,7 +54,7 @@ def attach_web_tools(
 
     The agent must have been created with `deps_type=dict` (the tools read
     usage from the run context only). Each tool updates the accumulator
-    attribute `agent._mourat_tool_time_total` after every call via the shared
+    attribute `agent._comourat_tool_time_total` after every call via the shared
     `nonlocal` closure, so per-item timing stays live after tool calls.
     """
     tool_time_total = 0.0
@@ -85,7 +85,7 @@ def attach_web_tools(
             return f"Error extracting {url}: {e}"
         finally:
             tool_time_total += time.monotonic() - t_tool
-            agent._mourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
+            agent._comourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
             logger.debug(
                 "extract_url '%s' | %.2fs (tool total %.2fs)",
                 url,
@@ -126,7 +126,7 @@ def attach_web_tools(
             return f"Error searching for '{query}': {e}"
         finally:
             tool_time_total += time.monotonic() - t_tool
-            agent._mourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
+            agent._comourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
             logger.debug(
                 "web_search '%s' | %.2fs (tool total %.2fs)",
                 query,
@@ -134,6 +134,6 @@ def attach_web_tools(
                 tool_time_total,
             )
 
-    agent._mourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
+    agent._comourat_tool_time_total = tool_time_total  # type: ignore[attr-defined]
 
     return agent

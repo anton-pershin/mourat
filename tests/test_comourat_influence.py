@@ -4,6 +4,8 @@ Mirrors mourat's influence tests but exercises the comourat cores directly,
 without any pipeline machinery.
 """
 
+import logging
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -179,3 +181,42 @@ class TestAuthorityCore:
         core.assess(collection)
         prompt = core.agent.run_sync.call_args[0][0]
         assert '"affiliations": "unknown"' in prompt
+
+
+class TestAuthorityStandaloneRetry:
+    """Direct core tests, no adapter, no injected time/logger (review 2)."""
+
+    def test_exhausted_retries_fail_open_without_error(self):
+        agent = MagicMock()
+        agent.run_sync.side_effect = RuntimeError("transport down")
+        core = AuthorityInfluenceAssessorCore.__new__(AuthorityInfluenceAssessorCore)
+        core.agent = agent
+        core.logger = logging.getLogger("test.authority")
+        core.time = time  # the DEFAULT core wiring, nothing injected
+        core.batch_size = 2
+        core.request_retries = 2
+        core.request_retry_delay_seconds = 0.0
+        collection = PaperCandidateCollection(
+            papers=[PaperCandidate(title="T", authors=["A"], description="D")]
+        )
+        output, _ = core.assess(collection)
+        assert output.papers[0].influence_score == 0
+        assert agent.run_sync.call_count == 3  # 1 + request_retries
+
+    def test_constructed_core_retries_and_sleeps(self):
+        # The real constructor path: time/logger initialized inside the core.
+        from pydantic_ai.models.function import FunctionModel
+
+        def failing(messages, tools):
+            raise RuntimeError("transport down")
+
+        core = AuthorityInfluenceAssessorCore(
+            model=FunctionModel(failing),
+            request_retries=1,
+            request_retry_delay_seconds=0.0,
+        )
+        collection = PaperCandidateCollection(
+            papers=[PaperCandidate(title="T", authors=["A"], description="D")]
+        )
+        output, _ = core.assess(collection)
+        assert output.papers[0].influence_score == 0

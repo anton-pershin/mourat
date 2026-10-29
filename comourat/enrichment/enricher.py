@@ -85,7 +85,7 @@ class EnrichmentAgent:
 
     def enrich(self, prompt: str) -> EnrichmentResult:
         """Run one enrichment call. Raises UsageLimitExceeded when limits hit."""
-        tools_before = self.agent._mourat_tool_time_total  # type: ignore[attr-defined]
+        tools_before = self.agent._comourat_tool_time_total  # type: ignore[attr-defined]
         t_run = time.monotonic()
         try:
             run_result: AgentRunResult = self.agent.run_sync(
@@ -102,7 +102,7 @@ class EnrichmentAgent:
             raise
         run_s = time.monotonic() - t_run
         tools_s = (
-            self.agent._mourat_tool_time_total - tools_before  # type: ignore[attr-defined]
+            self.agent._comourat_tool_time_total - tools_before  # type: ignore[attr-defined]
         )
         logger.debug(
             "enrich | total=%.2fs tools=%.2fs llm=%.2fs",
