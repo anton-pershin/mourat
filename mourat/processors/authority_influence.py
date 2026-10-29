@@ -13,7 +13,6 @@ from comourat.influence.authority import (
 )
 from comourat.models import PaperCandidateCollection
 from mourat.base import Function
-from mourat.data_models import PaperCandidate
 from mourat.monitoring import MonitoringHandler
 
 logger = logging.getLogger(__name__)
@@ -55,5 +54,12 @@ class AuthorityInfluenceAssessor(
     def _run(
         self, data: PaperCandidateCollection
     ) -> tuple[PaperCandidateCollection, str]:
-        output, lines = self.core.assess(data)
+        # Affiliations are a mourat-side in-flight field the neutral comourat
+        # model cannot carry; bridge them to the core by paper index.
+        affiliations = {
+            i: affs
+            for i, paper in enumerate(data.papers)
+            if (affs := getattr(paper, "affiliations", None))
+        }
+        output, lines = self.core.assess(data, affiliations)
         return output, "\n".join(lines)

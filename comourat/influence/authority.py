@@ -70,12 +70,13 @@ def _stable_identifier(paper: PaperCandidate) -> str:
     return f"content-sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
 
 
-def _render_papers(papers: list[tuple[str, PaperCandidate]]) -> str:
+def _render_papers(
+    papers: list[tuple[str, PaperCandidate]],
+    affiliations_by_id: dict[str, dict[str, list[str]]],
+) -> str:
     lines = []
     for pid, paper in papers:
-        # affiliations is an application-level field (mourat's extended model);
-        # neutral comourat candidates have no affiliations at all.
-        affiliations = getattr(paper, "affiliations", None)
+        affiliations = affiliations_by_id.get(pid)
         if affiliations:
             affs = "; ".join(
                 f"{a}: {', '.join(insts)}" for a, insts in affiliations.items()
@@ -140,12 +141,14 @@ class AuthorityInfluenceAssessorCore:
         return None
 
     def _run_batch(
-        self, papers: list[tuple[str, PaperCandidate]]
+        self,
+        papers: list[tuple[str, PaperCandidate]],
+        affiliations_by_id: dict[str, dict[str, list[str]]],
     ) -> tuple[dict[str, int], bool]:
         """One batch; return scores and whether a valid response was received."""
         prompt = (
             "Rate each paper's authority influence on a 0-100 scale.\n\n"
-            + _render_papers(papers)
+            + _render_papers(papers, affiliations_by_id)
             + "\n\nReturn one verdict per paper: its id (exactly as given) "
             "and a 'score' 0-100. Return nothing else."
         )
@@ -156,8 +159,17 @@ class AuthorityInfluenceAssessorCore:
         return {v.id: v.score for v in result.verdicts if v.id in valid_ids}, True
 
     def assess(
-        self, data: PaperCandidateCollection
+        self,
+        data: PaperCandidateCollection,
+        affiliations: dict[int, dict[str, list[str]]] | None = None,
     ) -> tuple[PaperCandidateCollection, list[str]]:
+        """Assess papers in place; returns (papers, summary_lines).
+
+        `affiliations` maps paper INDEX to author->affiliations for that
+        paper (application-level data the neutral model cannot carry).
+        Papers without an entry render as 'unknown' in the prompt.
+        """
+        affiliations = affiliations or {}
         t_start = time.monotonic()
         zero_scored: list[str] = []
         paper_assessments: list[str] = []
@@ -176,7 +188,12 @@ class AuthorityInfluenceAssessorCore:
                 len(triples),
                 batch[0][1].title[:60],
             )
-            scores, batch_responded = self._run_batch(batch)
+            affs_by_id = {
+                pid: affiliations[int(pid.removeprefix("paper_"))]
+                for pid, _ in batch
+                if int(pid.removeprefix("paper_")) in affiliations
+            }
+            scores, batch_responded = self._run_batch(batch, affs_by_id)
 
             missing = [(pid, p) for pid, p in batch if pid not in scores]
             unassessable_reasons = {
@@ -193,7 +210,14 @@ class AuthorityInfluenceAssessorCore:
                     "authority follow-up call for %d missing verdicts",
                     len(missing),
                 )
-                follow_up, follow_up_responded = self._run_batch(missing)
+                follow_up, follow_up_responded = self._run_batch(
+                    missing,
+                    {
+                        pid: affiliations[int(pid.removeprefix("paper_"))]
+                        for pid, _ in missing
+                        if int(pid.removeprefix("paper_")) in affiliations
+                    },
+                )
                 scores.update(follow_up)
                 for pid, _ in missing:
                     if pid in follow_up:

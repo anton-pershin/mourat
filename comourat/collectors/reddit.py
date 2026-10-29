@@ -20,6 +20,7 @@ class RedditPostCollectorCore:
         limit_per_subreddit: int = 100,
         max_posts_per_subreddit: int = 10,
         require_text: bool = True,
+        now_fn=None,
     ) -> None:
         self.reddit_client = reddit_client
         self.subreddits = subreddits
@@ -27,9 +28,10 @@ class RedditPostCollectorCore:
         self.limit_per_subreddit = limit_per_subreddit
         self.max_posts_per_subreddit = max_posts_per_subreddit
         self.require_text = require_text
+        self.now_fn = now_fn or (lambda: datetime.datetime.now(datetime.UTC))
 
     def collect(self) -> RedditPostCollection:
-        cutoff = datetime.datetime.now(datetime.UTC) - self.time_window
+        cutoff = self.now_fn() - self.time_window
         all_posts: list[RedditPostInfo] = []
 
         for subreddit_name in self.subreddits:

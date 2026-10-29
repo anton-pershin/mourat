@@ -101,16 +101,18 @@ class CitationInfluenceAssessor:
             )
         return None, None
 
-    def assess(self, papers) -> tuple[list, list[str]]:
+    def assess(self, papers, today: date | None = None) -> tuple[list, list[str]]:
         """Assess papers in place; returns (papers, summary_lines).
 
         `papers` is any list of objects carrying influence_fwci,
         influence_cited_by_count, publication_date, title, and writable
         influence_score / influence_measure_used attributes (duck-typed, so
         both comourat candidates and mourat resolved papers work).
+        `today` overrides the current date (constructor-free clock injection
+        for tests and replays); defaults to the system date.
         """
         t_start = time.monotonic()
-        today = date.today()
+        today = today or date.today()
         assessed = 0
         measure_counts = {MEASURE_FWCI: 0, MEASURE_CITATIONS_PER_YEAR: 0}
         unmeasurable: list[str] = []

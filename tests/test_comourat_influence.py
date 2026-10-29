@@ -146,3 +146,36 @@ class TestAuthorityCore:
         output, _ = core.assess(collection)
         assert [p.influence_score for p in output.papers] == [10, 20]
         assert core.agent.run_sync.call_count == 2
+
+    def test_affiliations_reach_the_prompt(self):
+        # Review fix: affiliations must arrive via the explicit parameter,
+        # not a getattr on the neutral model.
+        verdicts = [
+            AuthorityVerdict(id="paper_0", score=70),
+            AuthorityVerdict(id="paper_1", score=10),
+        ]
+        core = self._core(AuthorityResult(verdicts=verdicts))
+        collection = PaperCandidateCollection(
+            papers=[
+                PaperCandidate(title="T0", authors=["Alice"], description="D"),
+                PaperCandidate(title="T1", authors=["Bob"], description="D"),
+            ]
+        )
+        output, _ = core.assess(
+            collection,
+            affiliations={0: {"Alice": ["MIT"]}},
+        )
+        prompt = core.agent.run_sync.call_args[0][0]
+        assert "MIT" in prompt
+        assert "unknown" in prompt  # paper 1 has no affiliations
+        assert [p.influence_score for p in output.papers] == [70, 10]
+
+    def test_no_affiliations_given_renders_unknown(self):
+        verdicts = [AuthorityVerdict(id="paper_0", score=5)]
+        core = self._core(AuthorityResult(verdicts=verdicts))
+        collection = PaperCandidateCollection(
+            papers=[PaperCandidate(title="T", authors=["A"], description="D")]
+        )
+        core.assess(collection)
+        prompt = core.agent.run_sync.call_args[0][0]
+        assert '"affiliations": "unknown"' in prompt

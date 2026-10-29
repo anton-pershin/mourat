@@ -19,6 +19,7 @@ class HNPostCollectorCore:
         min_points: int = 0,
         tags: list[str] | None = None,
         limit: int = 1000,
+        now_fn=None,
     ) -> None:
         self.hn_client = hn_client
         self.time_window_lo_hours = time_window_lo_hours
@@ -26,9 +27,12 @@ class HNPostCollectorCore:
         self.min_points = min_points
         self.tags = tags if tags is not None else ["story"]
         self.limit = limit
+        self.now_fn = now_fn or (
+            lambda: int(datetime.datetime.now(datetime.UTC).timestamp())
+        )
 
     def collect(self) -> HNPostCollection:
-        now = int(datetime.datetime.now(datetime.UTC).timestamp())
+        now = self.now_fn()
         lo = now - self.time_window_lo_hours * 3600
         hi = now - self.time_window_hi_hours * 3600
 

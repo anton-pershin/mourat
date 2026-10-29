@@ -92,6 +92,7 @@ class ArxivPaperCollectorCore:
         keywords: str | None = None,
         candidate_model: type[PaperCandidate] = PaperCandidate,
         feed_parser=None,
+        today_fn=None,
     ) -> None:
         self.candidate_model = candidate_model
         self.feed_parser = feed_parser if feed_parser is not None else feedparser.parse
@@ -104,7 +105,8 @@ class ArxivPaperCollectorCore:
             self.start_date: datetime.date = datetime.date.fromisoformat(start_date)
 
         if end_date is None:
-            self.end_date: datetime.date = datetime.date.today()
+            today_fn = today_fn or datetime.date.today
+            self.end_date: datetime.date = today_fn()
         else:
             self.end_date: datetime.date = datetime.date.fromisoformat(end_date)
 
