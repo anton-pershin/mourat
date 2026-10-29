@@ -31,7 +31,7 @@ from pydantic_ai.models import Model
 
 from comourat.models import PaperCandidate, PaperCandidateCollection
 
-time = __import__("time")
+import time
 
 DEFAULT_SYSTEM_PROMPT = (
     "You assess the authority influence of research papers. For each paper "
@@ -73,9 +73,12 @@ def _stable_identifier(paper: PaperCandidate) -> str:
 def _render_papers(papers: list[tuple[str, PaperCandidate]]) -> str:
     lines = []
     for pid, paper in papers:
-        if paper.affiliations:
+        # affiliations is an application-level field (mourat's extended model);
+        # neutral comourat candidates have no affiliations at all.
+        affiliations = getattr(paper, "affiliations", None)
+        if affiliations:
             affs = "; ".join(
-                f"{a}: {', '.join(insts)}" for a, insts in paper.affiliations.items()
+                f"{a}: {', '.join(insts)}" for a, insts in affiliations.items()
             )
         else:
             affs = "unknown"
