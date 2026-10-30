@@ -30,6 +30,7 @@ def test_comourat_modules_importable():
     import comourat.influence
     import comourat.models
     import comourat.resolution
+    import comourat.verification
 
 
 def test_config_via_constructor_no_env_lookups():
