@@ -11,11 +11,7 @@ from mourat.data_models import (
     Seed,
 )
 from mourat.monitoring import MonitoringHandler
-from mourat.resolvers.paper_resolver import (
-    PaperResolver,
-    _abstract_from_inverted_index,
-    _extract_arxiv_id,
-)
+from mourat.resolvers.paper_resolver import PaperResolver, _extract_arxiv_id
 from mourat.resolvers.seed_resolver import SeedResolver
 
 
@@ -88,15 +84,6 @@ class TestExtractArxivId:
 
     def test_version_suffix_stripped(self):
         assert _extract_arxiv_id(["https://arxiv.org/abs/1706.03762v3"]) == "1706.03762"
-
-
-class TestAbstractFromInvertedIndex:
-    def test_reconstructs_word_order(self):
-        inv = {"all": [2], "is": [1], "Attention": [0]}
-        assert _abstract_from_inverted_index(inv) == "Attention is all"
-
-    def test_missing_index_returns_empty(self):
-        assert _abstract_from_inverted_index(None) == ""
 
 
 class TestResolveByTitle:

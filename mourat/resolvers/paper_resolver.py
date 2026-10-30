@@ -1,50 +1,30 @@
-"""Resolve candidates through a provider-neutral paper graph client."""
+"""Paper resolver: Function adapter over comourat's neutral resolution core."""
 
 from __future__ import annotations
 
 import logging
-import re
 import time
 
-from mourat.base import Function
 from comourat.clients.arxiv import ArxivClient
-from comourat.clients.paper_graph import PaperGraphClient, PaperRecord
+from comourat.clients.paper_graph import PaperGraphClient
+from comourat.resolution.paper_resolver import (
+    PaperResolverCore,
+    extract_arxiv_id as _extract_arxiv_id,
+)
+from mourat.base import Function
 from mourat.data_models import (
     PaperCandidateCollection,
     ResolvedPaper,
     ResolvedPaperCollection,
 )
 from mourat.monitoring import MonitoringHandler
-from mourat.utils.similarity import titles_match
 
 logger = logging.getLogger(__name__)
-_ARXIV_ID_IN_URL = re.compile(
-    r"arxiv\.org/(?:abs|pdf)/([0-9]{4}\.\d{4,5})(?:v[0-9]+)?/?"
-)
 STATUS_RESOLVED = "resolved"
 
 
-def _abstract_from_inverted_index(inv: dict[str, list[int]] | None) -> str:
-    """Reconstruct an OpenAlex inverted-index abstract for compatibility."""
-    if not inv:
-        return ""
-    positions = [
-        (position, word) for word, indexes in inv.items() for position in indexes
-    ]
-    positions.sort()
-    return " ".join(word for _, word in positions)
-
-
-def _extract_arxiv_id(urls: list[str]) -> str | None:
-    for url in urls:
-        match = _ARXIV_ID_IN_URL.search(url)
-        if match:
-            return match.group(1)
-    return None
-
-
 class PaperResolver(Function[PaperCandidateCollection, ResolvedPaperCollection]):
-    """Resolve candidates by canonical identity, then title search fallback."""
+    """Resolve candidates to canonical metadata, dropping unresolved items."""
 
     def __init__(
         self,
@@ -54,75 +34,67 @@ class PaperResolver(Function[PaperCandidateCollection, ResolvedPaperCollection])
         title_similarity_threshold: float = 0.9,
         openalex_client: PaperGraphClient | None = None,
     ) -> None:
-        self.client = paper_graph_client or openalex_client
-        if self.client is None:
+        client = paper_graph_client or openalex_client
+        if client is None:
             raise ValueError("paper_graph_client is required")
-        self.arxiv = arxiv_client
-        self.title_similarity_threshold = title_similarity_threshold
+        # `arxiv_client` remains accepted for existing Hydra configurations.
+        # Identity lookup and canonical metadata retrieval use the graph client.
+        self.core = PaperResolverCore(
+            paper_graph_client=client,
+            title_similarity_threshold=title_similarity_threshold,
+        )
         super().__init__(monitoring_handler)
 
-    def _resolve_record(self, candidate):
-        arxiv_id = candidate.arxiv_id or _extract_arxiv_id(candidate.urls_seen)
-        record = self.client.resolve_by_arxiv_id(arxiv_id) if arxiv_id else None
-        if record is None and candidate.doi:
-            record = self.client.resolve_by_doi(candidate.doi)
-        if record is None:
-            page = self.client.search_papers(candidate.title)
-            record = page.papers[0] if page.papers else None
-        if record is None:
-            return None, "no_paper_found"
-        if not titles_match(
-            candidate.title, record.title, self.title_similarity_threshold
-        ):
-            return None, "provider_title_mismatch"
-        return record, "resolved"
-
-    def _resolve_one(self, candidate):
-        try:
-            record, reason = self._resolve_record(candidate)
-        except Exception:
-            logger.exception("resolution request failed for '%s'", candidate.title)
-            return None, "api_error"
-        if record is None:
-            return None, reason
-        identity = record.identity
-        return (
-            ResolvedPaper(
-                title=record.title,
-                abstract=record.abstract or candidate.description,
-                authors=record.authors,
-                publication_date=(
-                    record.publication_date.isoformat()
-                    if record.publication_date
-                    else None
-                ),
-                url="",
-                provenance=candidate.provenance,
-                doi=identity.doi,
-                arxiv_id=identity.arxiv_id,
-                influence_fwci=record.raw_influence.get("fwci"),
-                influence_cited_by_count=record.citation_count,
-                resolution_status=STATUS_RESOLVED,
-            ),
-            "resolved",
-        )
-
-    def _run(self, data: PaperCandidateCollection):
+    def _run(
+        self, data: PaperCandidateCollection
+    ) -> tuple[ResolvedPaperCollection, str]:
         started = time.monotonic()
-        resolved, dropped = [], []
-        for index, candidate in enumerate(data.papers, start=1):
+        candidates = data.papers
+        result = self.core.resolve(candidates)
+        resolved: list[ResolvedPaper] = []
+        dropped: list[tuple[str, str]] = []
+
+        for index, outcome in enumerate(result.resolutions, start=1):
+            candidate = outcome.candidate
             logger.info(
                 "resolving paper %d/%d: '%s'",
                 index,
-                len(data.papers),
+                len(candidates),
                 candidate.title,
             )
-            item, reason = self._resolve_one(candidate)
-            (resolved if item is not None else dropped).append(
-                item if item is not None else (candidate.title, reason)
+            if outcome.record is None:
+                reason = outcome.reason or "no_paper_found"
+                if reason == "api_error":
+                    logger.warning(
+                        "resolution request failed for '%s'", candidate.title
+                    )
+                dropped.append((candidate.title, reason))
+                continue
+
+            record = outcome.record
+            identity = record.identity
+            resolved.append(
+                ResolvedPaper(
+                    title=record.title,
+                    abstract=record.abstract or candidate.description,
+                    authors=record.authors,
+                    publication_date=(
+                        record.publication_date.isoformat()
+                        if record.publication_date
+                        else None
+                    ),
+                    url="",
+                    provenance=getattr(candidate, "provenance", ["web_search"]),
+                    doi=identity.doi,
+                    arxiv_id=identity.arxiv_id,
+                    influence_fwci=record.raw_influence.get("fwci"),
+                    influence_cited_by_count=record.citation_count,
+                    resolution_status=STATUS_RESOLVED,
+                )
             )
+
         lines = [
-            f"Candidates in: {len(data.papers)}, resolved: {len(resolved)}, unresolved (dropped): {len(dropped)}"
+            f"Candidates in: {len(candidates)}, resolved: {len(resolved)}, unresolved (dropped): {len(dropped)}"
         ]
         for title, reason in dropped:
             lines.append(f"### UNRESOLVED: {title}\nReason: {reason}\n")
@@ -135,7 +107,7 @@ class PaperResolver(Function[PaperCandidateCollection, ResolvedPaperCollection])
         logger.debug(
             "resolved %d/%d candidates | %.2fs",
             len(resolved),
-            len(data.papers),
+            len(candidates),
             time.monotonic() - started,
         )
         return ResolvedPaperCollection(papers=resolved), "\n".join(lines)
