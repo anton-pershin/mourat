@@ -26,7 +26,7 @@ The `anton-pershin/mourat` repository only. This spec creates the `comourat/` pa
 
 **FR4 — Web enhancement.** The library enhances collected items with web search and web page extraction: a standalone web search tool, a standalone page extraction helper, and an LLM enrichment agent that uses both tools. The enrichment prompt is provided by the caller; the library provides the tools and the agent mechanics.
 
-**FR5 — Framework independence.** The library contains no imports from `mourat.*` and uses no `Function` classes, monitoring handlers, database, writer, or Hydra configuration. All configuration, including credentials, prompts, and breakpoint tables, is passed as plain constructor arguments. Mourat collectors, the paper resolver, clients, enhancers, and influence assessors listed in the modification summary use thin `Function` adapters over comourat classes. The `SeedResolver` stays in mourat because it resolves mourat content items.
+**FR5 — Framework independence.** The library contains no imports from `mourat.*` and uses no `Function` classes, monitoring handlers, database, writer, or Hydra configuration. All configuration, including credentials, prompts, and breakpoint tables, is passed as plain constructor arguments. Mourat collectors, paper resolver, PDF verifier, clients, enhancers, and influence assessors listed in the modification summary use thin `Function` adapters over comourat classes. The `SeedResolver` stays in mourat because it resolves mourat content items.
 
 **FR6 — Influence score assessment.** The library assesses influence scores:
 - Post influence: the normalization formula mapping a raw post score and a reference level onto 0–100 (score at the reference level is 50, saturating at both ends), for Reddit and Hacker News posts.
@@ -35,9 +35,11 @@ The `anton-pershin/mourat` repository only. This spec creates the `comourat/` pa
 
 **FR7 — Paper candidate resolution.** After collection, comourat resolves paper candidates to canonical paper records. It tries an arXiv ID or DOI, including an arXiv ID found in the candidate's URLs, then searches by title when identity lookup finds no record. It accepts a record only when its title meets a caller-configured similarity threshold. It returns canonical records or unresolved outcomes.
 
+**FR8 — arXiv PDF verification.** Comourat checks whether a canonical paper has an arXiv preprint. It searches arXiv by title, checks the result against a caller-configured title similarity threshold, and returns the matching PDF URL or a failure outcome.
+
 #### 2.2 Non-functional requirements
 
-**NFR1 — Behavior preservation.** Collection, client, resolution, and influence-assessment behavior is preserved: same HTTP endpoints, parameters, retries, limits, filtering and conversion logic, title-match threshold behavior, resolution order, normalization and interpolation formulas, and authority retry, follow-up, and fail-open behavior. The refactor is extraction plus adapters, not a redesign. Exception-handling code that exists to feed monitoring stays in mourat's `Function` wrappers.
+**NFR1 — Behavior preservation.** Collection, client, resolution, arXiv verification, and influence-assessment behavior is preserved: same HTTP endpoints, parameters, retries, limits, filtering and conversion logic, title-match threshold behavior, resolution order, PDF URL format, verification failure outcomes, normalization and interpolation formulas, and authority retry, follow-up, and fail-open behavior. The refactor is extraction plus adapters, not a redesign. Exception-handling code that exists to feed monitoring stays in mourat's `Function` wrappers.
 
 **NFR2 — Dependency hygiene.** The library declares its own dependencies (pydantic, pydantic-ai, requests, trafilatura, and the LLM provider package). It does not import mourat's dependencies that belong to pipeline orchestration only. mourat declares a dependency on the library package (as a path/local dependency while comourat lives in this repository).
 
@@ -59,9 +61,11 @@ Acceptance is verified by tests in the repository's test suite (the project has 
 
 **AC6 (FR5).** A static test asserts that no module under `comourat/` imports `mourat.*`. A test asserts that comourat classes accept all configuration as constructor arguments (no Hydra or environment lookups inside the library).
 
-**AC7 (FR5, NFR3).** After the adapters are introduced, every existing mourat test passes unchanged in behavior: the collection workflows produce the same outputs as before, with collectors, processors, resolvers, and assessors implemented as `Function` wrappers over comourat classes. The full existing test suite passes.
+**AC7 (FR5, NFR3).** After the adapters are introduced, every existing mourat test passes unchanged in behavior: the collection workflows produce the same outputs as before, with collectors, processors, resolvers, verifiers, and assessors implemented as `Function` wrappers over comourat classes. The full existing test suite passes.
 
 **AC8 (FR7, NFR1).** Tests verify that comourat resolves candidates by identifier, falls back to title search, rejects title mismatches, and reports unresolved candidates, using mocked clients.
+
+**AC9 (FR8, NFR1).** Tests verify that comourat arXiv verification returns the PDF URL for a matching title and returns distinct failure outcomes when no paper is found, the title does not match, or the request fails, using a mocked arXiv client.
 
 Note: AC7's "same outputs as before" is checked by the existing test suite, which already pins collector and processor behavior through mocks; no new golden-output fixtures are planned.
 
@@ -75,7 +79,7 @@ No insight is needed.
 
 The constitution section 5.1 pipeline diagrams remain valid and unchanged: all five collection workflows keep the same filters, names, and order. This spec changes nothing at the pipeline level, so no pipeline flowchart is highlighted; the change sits below the pipeline level, inside the filters. After this spec, each filter shown in the constitution diagrams is internally backed by a comourat class where the modification table says so.
 
-The component-level design adds one new package and one adapter layer:
+The component-level design adds comourat components and mourat adapters:
 
 ```mermaid
 flowchart LR
@@ -91,6 +95,7 @@ flowchart LR
     CLIENTS["clients/\narxiv, hn_algolia,\nsemantic_scholar,\nopenalex, paper_graph"]
     COLLECT["collectors/\narxiv, arxiv_html_affiliations,\nsemantic_scholar,\nreddit, hn, paper_discoverer,\nseed_expander"]
     RESOLVE["resolution/\npaper candidate resolver"]
+    VERIFY["verification/\narXiv PDF verifier"]
     ENRICH["enrichment/\nweb search, page extraction,\npage fetch, summarization agent,\nenrichment agent, web tools"]
     INFLUENCE["influence/\npost formula, citation influence,\nauthority assessor"]
     CLIENTS --> MODELS
@@ -98,6 +103,7 @@ flowchart LR
     COLLECT --> MODELS
     RESOLVE --> CLIENTS
     RESOLVE --> MODELS
+    VERIFY --> CLIENTS
     ENRICH --> MODELS
     INFLUENCE --> MODELS
   end
@@ -116,13 +122,14 @@ Two-level hierarchy: first level is the package, second level is the component g
 - `comourat/clients/` — moved code: `arxiv.py`, `hn_algolia.py`, `semantic_scholar.py`, `openalex.py`, `paper_graph.py`. Behavior unchanged (NFR1).
 - `comourat/collectors/` — the collection logic of `mourat/collectors/` (arXiv, arXiv HTML affiliations, Semantic Scholar, Reddit, HN, paper discoverer, seed expander) as plain classes with constructor-argument configuration; the LLM-discovery and seed-expansion logic moves here with the pydantic-ai agent construction.
 - `comourat/resolution/` — paper candidate resolution from canonical identity or title search, with title-match verification and neutral success/unresolved results. The resolver uses comourat clients and models; it contains no mourat pipeline or database types.
+- `comourat/verification/` — arXiv title-search verification for canonical paper records. It returns a matching PDF URL or a typed failure outcome and uses the comourat arXiv client.
 - `comourat/enrichment/` — the web search and page extraction tools from `mourat/tools/web.py`, the page-fetch/extract logic of `mourat/processors/hn_fetcher.py`, the summarization agent mechanics of `mourat/processors/hn_summarizer.py`, and the enrichment agent of `mourat/enrichers/web_enricher.py` (agent built from a caller-provided prompt).
 - `comourat/influence/` — `compute_influence_score` and post normalization (from `processors/post_influence.py`), the citation-influence mapping (fwci preferred, citations-per-year fallback, breakpoint interpolation) from `processors/influence_assessor.py`, and the batched authority assessor from `processors/authority_influence.py` with its retry, follow-up, and fail-open semantics.
 - `comourat/py.typed` and comourat dependency declarations in `pyproject.toml`.
 
 **mourat (modified adapter layer + unchanged orchestration)**
 
-- Every modified collector, processor, resolver, and enhancer keeps its class name, its `Function[InputT, OutputT]` type, and its position in the pipelines; its body delegates to the comourat class and converts between mourat collection models and comourat models only where a model had to split (for example, `PaperCandidate` keeps mourat-only fields such as provenance and announce type in the mourat model; the comourat model carries the neutral subset). `SeedResolver` remains in mourat.
+- Every modified collector, processor, resolver, verifier, and enhancer keeps its class name, its `Function[InputT, OutputT]` type, and its position in the pipelines; its body delegates to the comourat class and converts between mourat collection models and comourat models only where a model had to split. `SeedResolver` remains in mourat.
 - `mourat/base.py`, `mourat/monitoring.py`, scorers, filters, writers, database, scripts, and Hydra configs: unchanged.
 - `pyproject.toml`: declare comourat as a package of this repository (single-distribution setup with both packages; no separate install step while comourat lives here).
 
@@ -130,19 +137,20 @@ Two-level hierarchy: first level is the package, second level is the component g
 
 #### 6.1 Todo list
 
-The plan is ordered bottom-up: models, clients, collectors, resolution, influence, enrichment, then adapters and tests. Keep the full suite green at each step.
+The plan is ordered bottom-up: models, clients, collectors, resolution, verification, influence, enrichment, then adapters and tests. Keep the full suite green at each step.
 
 1. Create the `comourat/` package skeleton (`__init__.py`, `py.typed`) and add the comourat package declaration to `pyproject.toml`.
 2. Create `comourat/models.py` with neutral models. Keep mourat-only fields in the extended mourat models.
 3. Move client implementations to `comourat/clients/`; update all import sites to use comourat directly. Remove `mourat/clients/`.
 4. Extract collection logic for arXiv, arXiv HTML affiliations, Semantic Scholar, Reddit, HN, paper discovery, and seed expansion. Keep mourat collectors as `Function` adapters.
 5. Add `comourat/resolution/paper_resolver.py` for candidate identity lookup, title fallback, and title-match verification. Keep `mourat/resolvers/paper_resolver.py` as a `Function` adapter. Keep `SeedResolver` in mourat.
-6. Extract influence logic to `comourat/influence/`; rework the mourat processors as adapters.
-7. Extract enrichment logic to `comourat/enrichment/`; rework the mourat processors and enrichers as adapters. Remove duplicate mourat client and web-tool modules after all import sites use comourat.
-8. Add comourat tests for AC1-AC6 and AC8, including mocked resolver tests; add the AC6 static import test.
-9. Run the full test suite (AC7), `black` on touched files, and pylint errors-only on touched files. Fix or amend as needed.
-10. Update terminology and the constitution only if required, with explicit user approval for constitution changes.
-11. Commit and push the spec and implementation. Open the PR `Implemented 22: comourat reusable collection and web enhancement library`.
+6. Add `comourat/verification/arxiv_pdf.py` for title-search verification and neutral URL/failure outcomes. Keep `mourat/processors/arxiv_pdf_verifier.py` as a `Function` adapter that updates mourat URL fields and monitoring text.
+7. Extract influence logic to `comourat/influence/`; rework the mourat processors as adapters.
+8. Extract enrichment logic to `comourat/enrichment/`; rework the mourat processors and enrichers as adapters. Remove duplicate mourat client and web-tool modules after all import sites use comourat.
+9. Add comourat tests for AC1-AC6 and AC8-AC9, including mocked resolver and verification tests; add the AC6 static import test.
+10. Run the full test suite (AC7), `black` on touched files, and pylint errors-only on touched files. Fix or amend as needed.
+11. Update terminology and the constitution only if required, with explicit user approval for constitution changes.
+12. Commit and push the spec and implementation. Open the PR `Implemented 22: comourat reusable collection and web enhancement library`.
 
 #### 6.2 Modification summary
 
@@ -156,6 +164,7 @@ The plan is ordered bottom-up: models, clients, collectors, resolution, influenc
 | `comourat/collectors/arxiv.py`, `arxiv_html_affiliations.py`, `semantic_scholar.py`, `reddit.py`, `hn.py`, `paper_discoverer.py`, `seed_expander.py` | New: collection logic extracted from `mourat/collectors/` |
 | `comourat/collectors/__init__.py` | New |
 | `comourat/resolution/paper_resolver.py`, `__init__.py` | New: neutral candidate resolution using comourat clients |
+| `comourat/verification/arxiv_pdf.py`, `__init__.py` | New: neutral arXiv title verification and PDF URL/failure result |
 | `comourat/enrichment/web_tools.py`, `page_fetch.py`, `summarizer.py`, `enricher.py` | New: extracted from `mourat/tools/web.py`, `processors/hn_fetcher.py`, `processors/hn_summarizer.py`, `enrichers/web_enricher.py` |
 | `comourat/enrichment/__init__.py` | New |
 | `comourat/influence/post.py`, `citation.py`, `authority.py` | New: extracted from `processors/post_influence.py`, `influence_assessor.py`, `authority_influence.py` |
@@ -165,10 +174,12 @@ The plan is ordered bottom-up: models, clients, collectors, resolution, influenc
 | `mourat/collectors/*` (7 files) | Modified: thin `Function` adapters over comourat classes |
 | `mourat/resolvers/paper_resolver.py` | Modified: thin `Function` adapter over `comourat.resolution.PaperResolverCore` |
 | `mourat/resolvers/seed_resolver.py` | Unchanged: remains mourat-specific |
+| `mourat/processors/arxiv_pdf_verifier.py` | Modified: thin `Function` adapter over comourat verification core |
 | `mourat/processors/post_influence.py`, `influence_assessor.py`, `authority_influence.py` | Modified: thin `Function` adapters |
 | `mourat/processors/hn_fetcher.py`, `hn_summarizer.py` | Modified: thin `Function` adapters |
 | `mourat/enrichers/web_enricher.py` | Modified: thin `Function` adapter |
 | `mourat/tools/web.py` | Removed: all web-tool users now import from comourat |
+| `config/paper_resolver/default.yaml`, `config/arxiv_pdf_verifier/default.yaml` | Modified: client targets point to comourat |
 | `pyproject.toml` | Modified: add comourat package declaration and dependencies |
-| `tests/test_comourat_*.py` (new test files) | New: AC1-AC6 and AC8 tests |
+| `tests/test_comourat_*.py` (new test files) | New: AC1-AC6 and AC8-AC9 tests |
 | `tests/test_*` (existing files touching moved code) | Modified: import paths only where modules moved |
