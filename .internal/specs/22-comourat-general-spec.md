@@ -165,6 +165,7 @@ The plan is ordered bottom-up: models, clients, collectors, resolution, verifica
 | `comourat/collectors/__init__.py` | New |
 | `comourat/resolution/paper_resolver.py`, `__init__.py` | New: neutral candidate resolution using comourat clients |
 | `comourat/verification/arxiv_pdf.py`, `__init__.py` | New: neutral arXiv title verification and PDF URL/failure result |
+| `comourat/proxy.py` | New: proxy URL validation shared by clients and the page fetcher |
 | `comourat/enrichment/web_tools.py`, `page_fetch.py`, `summarizer.py`, `enricher.py` | New: extracted from `mourat/tools/web.py`, `processors/hn_fetcher.py`, `processors/hn_summarizer.py`, `enrichers/web_enricher.py` |
 | `comourat/enrichment/__init__.py` | New |
 | `comourat/influence/post.py`, `citation.py`, `authority.py` | New: extracted from `processors/post_influence.py`, `influence_assessor.py`, `authority_influence.py` |
@@ -180,6 +181,7 @@ The plan is ordered bottom-up: models, clients, collectors, resolution, verifica
 | `mourat/enrichers/web_enricher.py` | Modified: thin `Function` adapter |
 | `mourat/tools/web.py` | Removed: all web-tool users now import from comourat |
 | `config/paper_resolver/default.yaml`, `config/arxiv_pdf_verifier/default.yaml`, `config/{paper_graph_client,resolution_graph_client,expansion_graph_client}/{openalex,semantic_scholar}.yaml` | Modified: client targets point to comourat |
+| `config/hydra/job_logging/base.yaml` | Modified: comourat logger set to DEBUG so library failures are visible |
 | `pyproject.toml` | Modified: add comourat package declaration and dependencies |
 | `tests/test_comourat_*.py` (new test files) | New: AC1-AC6 and AC8-AC9 tests |
 | `tests/test_*` (existing files touching moved code) | Modified: import paths only where modules moved |
