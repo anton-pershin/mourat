@@ -1,65 +1,26 @@
-"""Web enrichment module — LLM agent with URL extraction and web search tools."""
+"""Web enrichment: Function adapter over comourat's enrichment agent."""
 
 from __future__ import annotations
 
 import logging
 import time
 
-from pydantic_ai import Agent, AgentRunResult
-from pydantic_ai.exceptions import UsageLimitExceeded
-from pydantic_ai.models import Model
-from pydantic_ai.usage import UsageLimits
-
+from comourat.enrichment.enricher import (
+    DEFAULT_SYSTEM_PROMPT,
+    EnrichmentAgent,
+)
+from comourat.models import EnrichmentResult
 from mourat.base import Function
 from mourat.data_models import (
     EnrichedRedditPost,
     EnrichedRedditPostCollection,
-    EnrichmentResult,
     RedditPostCollection,
 )
 from mourat.monitoring import MonitoringHandler
-from mourat.tools.web import attach_web_tools
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-You are a research assistant gathering additional context for social media posts.
-
-For each post provided, your task is to:
-1. Use the available tools to gather relevant information:
-   - `extract_url`: Fetch and extract the full content of a linked article.
-   - `web_search`: Find related information online.
-2. Return a list of additional context points: short self-contained facts
-   obtained from the web that are NOT already evident in the post.
-   Each point must stand alone, phrased like "X is ...".
-3. If the web search and article fetch yield nothing new, return an empty list.
-
-Return at most 5 context points.
-
-Note that you have **strict tool usage limits**: one `web_search` call and three `extract_url` calls.
-Be frugal and smart in your choices and do not attempt to bypass these limits.
-"""
-
-
-def _create_enrichment_agent(
-    model: Model,
-    system_prompt: str = SYSTEM_PROMPT,
-    model_settings: dict | None = None,
-    retries: int | None = None,
-    tool_call_rejection_buffer: int = 4,
-) -> Agent:
-    """Create an enrichment agent with URL extraction and web search tools."""
-    agent = Agent(
-        model,
-        output_type=EnrichmentResult,
-        system_prompt=system_prompt,
-        model_settings=model_settings,
-        retries=retries,
-        deps_type=dict,
-    )
-    return attach_web_tools(
-        agent, tool_call_rejection_buffer=tool_call_rejection_buffer
-    )
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 
 
 class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
@@ -68,7 +29,7 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
     def __init__(
         self,
         monitoring_handler: MonitoringHandler,
-        model: Model,
+        model,
         system_prompt: str = SYSTEM_PROMPT,
         model_settings: dict | None = None,
         retries: int | None = None,
@@ -76,15 +37,15 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         tool_calls_limit: int = 10,
         tool_call_rejection_buffer: int = 4,
     ) -> None:
-        self.agent = _create_enrichment_agent(
-            model,
+        self.core = EnrichmentAgent(
+            model=model,
             system_prompt=system_prompt,
             model_settings=model_settings,
             retries=retries,
+            request_limit=request_limit,
+            tool_calls_limit=tool_calls_limit,
             tool_call_rejection_buffer=tool_call_rejection_buffer,
         )
-        self.request_limit = request_limit
-        self.tool_calls_limit = tool_calls_limit
         super().__init__(monitoring_handler)
 
     def _run(
@@ -105,36 +66,24 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                 "Return the list of additional context points (facts not already evident in the post)."
             )
 
-            tools_before = self.agent._mourat_tool_time_total  # type: ignore[attr-defined]
             t_post = time.monotonic()
             try:
-                run_result: AgentRunResult = self.agent.run_sync(
-                    prompt,
-                    usage_limits=UsageLimits(
-                        request_limit=self.request_limit,
-                        tool_calls_limit=self.tool_calls_limit,
-                    ),
-                )
-            except UsageLimitExceeded as e:
+                result: EnrichmentResult = self.core.enrich(prompt)
+            except Exception as exc:
+                # UsageLimitExceeded and transport failures skip this post.
                 logger.exception(
-                    "Tool or request usage limit exceeded, skip this post: %s", e
+                    "enrichment failed for post %s: %s", post_info.submission_id, exc
                 )
                 continue
             post_s = time.monotonic() - t_post
-            tools_s = (
-                self.agent._mourat_tool_time_total - tools_before  # type: ignore[attr-defined]
-            )
             logger.debug(
-                "enrich %d/%d | '%s' | total=%.2fs tools=%.2fs llm=%.2fs",
+                "enrich %d/%d | '%s' | total=%.2fs",
                 i,
                 n_posts,
                 post_info.submission_id,
                 post_s,
-                tools_s,
-                post_s - tools_s,
             )
 
-            result: EnrichmentResult = run_result.output
             enriched_posts.append(
                 EnrichedRedditPost(
                     post=post_info,

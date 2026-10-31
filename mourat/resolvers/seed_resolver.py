@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any
 
 from mourat.base import Function
-from mourat.clients.paper_graph import PaperGraphClient, PaperIdentity, PaperRecord
+from comourat.clients.paper_graph import PaperGraphClient, PaperIdentity, PaperRecord
 from mourat.data_models import ContentItemCollection, Seed, SeedCollection
 from mourat.monitoring import MonitoringHandler
 from mourat.utils.similarity import titles_match

@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+from comourat.influence.post import compute_influence_score
 from mourat.base import Function
 from mourat.data_models import HNPostCollection
 from mourat.monitoring import MonitoringHandler
-from mourat.processors.post_influence import compute_influence_score
 
 
 class HNInfluenceAssessor(Function[HNPostCollection, HNPostCollection]):
     """Computes the normalized influence score for HN posts.
 
-    Reuses the neutral `compute_influence_score` from spec 17: the post at
+    Reuses the neutral `compute_influence_score` from comourat: the post at
     the reference level scores 50. A non-positive reference level is a config
     error and fails loudly.
     """

@@ -14,6 +14,7 @@ dependencies = [
   "feedparser",
   "httpx",
   "requests",
+  "PySocks",  # SOCKS proxies need it; requests reports a missing import
   "beautifulsoup4",
   "trafilatura",
   "pydantic",
@@ -26,6 +27,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 source = "versioningit"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mourat", "comourat"]
 
 [tool.versioningit]
 default-version = "0.0.0"

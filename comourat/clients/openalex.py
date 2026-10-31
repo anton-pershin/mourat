@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 import requests
 
-from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from comourat.models import PaperIdentity, PaperPage, PaperRecord
 
 logger = logging.getLogger(__name__)
 

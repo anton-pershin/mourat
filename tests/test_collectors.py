@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mourat.clients.openalex import OpenAlexClient
-from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from comourat.clients.openalex import OpenAlexClient
+from comourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
 from mourat.collectors.arxiv import ArxivPaperCollector
 from mourat.collectors.seed_expander import SeedExpander
 from mourat.collectors.semantic_scholar import SemanticScholarPaperCollector

@@ -3,18 +3,19 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, NonNegativeInt
 
-
-class PaperInfo(BaseModel):
-    title: str = Field(description="Title of the paper")
-    link: str = Field(description="Arxiv URL of the paper")
-    abstract: str = Field(description="Abstract of the paper")
-    citation_count: NonNegativeInt | None = Field(
-        description="Number of citations", default=None
-    )
-    authors: list[str] | None = Field(description="Authors of the paper", default=None)
-    publication_date: datetime.date | None = Field(
-        description="Date of publication", default=None
-    )
+from comourat.models import (
+    HNPostCollection,
+    HNPostInfo,
+    PaperCandidate as _ComouratPaperCandidate,
+    PaperCandidateCollection,
+    PaperIdentity,
+    PaperInfo,
+    PaperInfoCollection,
+    PaperPage,
+    PaperRecord,
+    RedditPostCollection,
+    RedditPostInfo,
+)
 
 
 class ScoredPaperInfo(BaseModel):
@@ -30,10 +31,6 @@ class ScoredPaperInfo(BaseModel):
     )
     score: int = Field(description="Relevance score from 0 to 5", ge=0, le=5)
     justification: str = Field(description="Justification for the score")
-
-
-class PaperInfoCollection(BaseModel):
-    papers: list[PaperInfo]
 
 
 class ScoredPaperInfoCollection(BaseModel):
@@ -213,26 +210,6 @@ class InfluenceMetric(BaseModel):
 # -- Post collection models --
 
 
-class RedditPostInfo(BaseModel):
-    """A single Reddit post for pipeline processing."""
-
-    subreddit: str
-    submission_id: str
-    title: str
-    author: str
-    date: str  # ISO format datetime string
-    url: str
-    text: str = ""
-    score: int = 0
-    influence_score: int | None = None
-
-
-class RedditPostCollection(BaseModel):
-    """Collection of Reddit posts."""
-
-    posts: list[RedditPostInfo]
-
-
 # -- LLM agent output models (used by enrichment and scoring agents) --
 
 
@@ -301,28 +278,31 @@ class ScoredRedditPostCollection(BaseModel):
     posts: list[ScoredRedditPost]
 
 
-# -- HN post collection models --
+class PaperCandidate(_ComouratPaperCandidate):
+    """Mourat's extended paper candidate.
 
+    Adds the in-flight fields mourat introduced: provenance, announce type,
+    and author affiliations. The neutral subset lives in comourat.
+    """
 
-class HNPostInfo(BaseModel):
-    """A single HackerNews story for pipeline processing."""
-
-    hn_id: str
-    title: str
-    author: str
-    date: str  # ISO format datetime string
-    url: str
-    text: str = ""  # story_text when present, else empty
-    points: int = 0
-    num_comments: int = 0
-    influence_score: int | None = None
-    description: str = ""  # compact summary produced by HNSummarizer
-
-
-class HNPostCollection(BaseModel):
-    """Collection of HackerNews posts."""
-
-    posts: list[HNPostInfo]
+    provenance: list[str] = Field(
+        default_factory=lambda: ["web_search"],
+        description="Generator or agent names that produced this candidate",
+    )
+    affiliations: dict[str, list[str]] | None = Field(
+        default=None,
+        description=(
+            "In-flight author -> affiliation pairs fetched deterministically; None "
+            "when unknown (no HTML render or no affiliation nodes)"
+        ),
+    )
+    announce_type: str | None = Field(
+        default=None,
+        description=(
+            "In-flight arXiv RSS announce type ('new', 'replace', 'cross', "
+            "or 'replace-cross'); monitoring only, never persisted"
+        ),
+    )
 
 
 class ScoredHNPost(BaseModel):
@@ -340,51 +320,6 @@ class ScoredHNPostCollection(BaseModel):
 
 
 # -- Paper collection models --
-
-
-class PaperCandidate(BaseModel):
-    """A candidate paper discovered by an agent or graph client."""
-
-    title: str = Field(description="Title of the paper as discovered")
-    authors: list[str] = Field(description="Authors of the paper, as found")
-    description: str = Field(default="", description="Short description of the paper")
-    urls_seen: list[str] = Field(
-        default_factory=list, description="URLs encountered while discovering the paper"
-    )
-    arxiv_id: str | None = None
-    doi: str | None = None
-    publication_date: str | None = Field(
-        default=None,
-        description="ISO publication date when the producer supplies one deterministically",
-    )
-    influence_score: int | None = Field(
-        default=None,
-        description="In-flight influence score written by the path's influence assessor",
-    )
-    affiliations: dict[str, list[str]] | None = Field(
-        default=None,
-        description=(
-            "In-flight author -> affiliation pairs fetched deterministically; None "
-            "when unknown (no HTML render or no affiliation nodes)"
-        ),
-    )
-    announce_type: str | None = Field(
-        default=None,
-        description=(
-            "In-flight arXiv RSS announce type ('new', 'replace', 'cross', "
-            "or 'replace-cross'); monitoring only, never persisted"
-        ),
-    )
-    provenance: list[str] = Field(
-        default_factory=lambda: ["web_search"],
-        description="Generator or agent names that produced this candidate",
-    )
-
-
-class PaperCandidateCollection(BaseModel):
-    """Collection of discovered paper candidates."""
-
-    papers: list[PaperCandidate]
 
 
 class ResolvedPaper(BaseModel):

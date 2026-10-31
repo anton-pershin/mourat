@@ -10,16 +10,17 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 if TYPE_CHECKING:
-    from mourat.clients.paper_graph import PaperGraphClient
+    from comourat.models import PaperGraphClient
 
 import requests
 
-from mourat.clients.paper_graph import (
+from comourat.models import (
     PaperGraphClient,
     PaperIdentity,
     PaperPage,
     PaperRecord,
 )
+from comourat.proxy import validate_proxy_url
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,8 @@ class SemanticScholarClient:
         if hasattr(self._session, "headers"):
             self._session.headers.update({"User-Agent": "mourat/0.1"})
         if proxy and hasattr(self._session, "proxies"):
-            self._session.proxies.update({"http": proxy, "https": proxy})
+            validated = validate_proxy_url(proxy)
+            self._session.proxies.update({"http": validated, "https": validated})
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         params = dict(params or {})

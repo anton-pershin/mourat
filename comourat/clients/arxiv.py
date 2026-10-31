@@ -12,6 +12,8 @@ from typing import Any
 
 import requests
 
+from comourat.proxy import validate_proxy_url
+
 logger = logging.getLogger(__name__)
 
 ARXIV_API_QUERY_URL = "https://export.arxiv.org/api/query"
@@ -43,7 +45,7 @@ class ArxivClient:
         self.max_retries = max_retries
         self.backoff_seconds = backoff_seconds
         self.regular_delay_seconds = regular_delay_seconds
-        self.proxy = proxy
+        self.proxy = validate_proxy_url(proxy) if proxy else None
         self._session: requests.Session | None = None
         if http_client is None:
             self._session = requests.Session()
