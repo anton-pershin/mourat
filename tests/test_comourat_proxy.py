@@ -43,6 +43,19 @@ class TestValidateProxyUrl:
         with pytest.raises(ProxyConfigurationError):
             validate_proxy_url("http://")
 
+    def test_socks_proxy_without_pysocks_is_rejected(self, monkeypatch):
+        # The failing run of 2026-10-31: the environment had no PySocks, so
+        # requests raised 'Missing dependencies for SOCKS support' for every
+        # page and the fetcher dropped every post.
+        monkeypatch.setattr("comourat.proxy._socks_support_available", lambda: False)
+        with pytest.raises(ProxyConfigurationError, match="PySocks"):
+            validate_proxy_url("socks5h://user:pass@proxy.example:1080")
+
+    def test_socks_proxy_with_pysocks_is_accepted(self, monkeypatch):
+        monkeypatch.setattr("comourat.proxy._socks_support_available", lambda: True)
+        proxy = "socks5h://user:pass@proxy.example:1080"
+        assert validate_proxy_url(proxy) == proxy
+
 
 class TestClientsValidateProxy:
     def test_arxiv_client_rejects_malformed_proxy(self):

@@ -182,6 +182,6 @@ The plan is ordered bottom-up: models, clients, collectors, resolution, verifica
 | `mourat/tools/web.py` | Removed: all web-tool users now import from comourat |
 | `config/paper_resolver/default.yaml`, `config/arxiv_pdf_verifier/default.yaml`, `config/{paper_graph_client,resolution_graph_client,expansion_graph_client}/{openalex,semantic_scholar}.yaml` | Modified: client targets point to comourat |
 | `config/hydra/job_logging/base.yaml` | Modified: comourat logger set to DEBUG so library failures are visible |
-| `pyproject.toml` | Modified: add comourat package declaration and dependencies |
+| `pyproject.toml` | Modified: add comourat package declaration and dependencies, including PySocks for SOCKS proxies |
 | `tests/test_comourat_*.py` (new test files) | New: AC1-AC6 and AC8-AC9 tests |
 | `tests/test_*` (existing files touching moved code) | Modified: import paths only where modules moved |
