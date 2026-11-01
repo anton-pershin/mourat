@@ -220,17 +220,17 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
     )
     writer_conn = create_connection(db_path) if needs_conn else None
     try:
-        if db_enabled:
-            db_writer = hydra.utils.instantiate(db_writer_cfg)(
-                monitoring_handler, conn=writer_conn
-            )
-            db_writer(filtered, step_id=step_id)
-
         if jsonl_enabled:
             jsonl_writer = hydra.utils.instantiate(jsonl_writer_cfg)(
                 monitoring_handler, conn=writer_conn
             )
             jsonl_writer(filtered, step_id=step_id)
+
+        if db_enabled:
+            db_writer = hydra.utils.instantiate(db_writer_cfg)(
+                monitoring_handler, conn=writer_conn
+            )
+            db_writer(filtered, step_id=step_id)
     finally:
         if writer_conn is not None:
             writer_conn.close()
