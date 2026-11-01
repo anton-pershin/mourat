@@ -16,8 +16,8 @@ from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from mourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
-from mourat.clients.semantic_scholar import SemanticScholarClient
+from comourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from comourat.clients.semantic_scholar import SemanticScholarClient
 from mourat.collectors.paper_discoverer import PaperDiscoverer
 from mourat.data_models import (
     PaperCandidate,

@@ -16,6 +16,7 @@
 
 | Term | Definition |
 |------|------------|
+| comourat | The reusable library for content collection and web enhancement, hosted in this repository as a top-level package and planned for extraction to a separate repository. Its classes are framework-free: no Function classes, monitoring handlers, database, writers, or Hydra configuration. Mourat uses it through thin Function adapters. |
 | Relevance | The relation of a content item to a specified research question, technical challenge, research topic, or constraint. |
 | Relevance score | An LLM assessment from 0 to 100 of relevance to one specified research question, technical challenge, research topic, or constraint. |
 | Filtering score | The highest relevance score among the scores selected for filtering. Whether constraint scores contribute depends on the collection workflow configuration. |

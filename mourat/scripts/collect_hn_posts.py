@@ -9,7 +9,7 @@ import hydra
 from omegaconf import DictConfig
 from pydantic_ai.models import Model
 
-from mourat.clients.hn_algolia import HNAlgoliaClient
+from comourat.clients.hn_algolia import HNAlgoliaClient
 from mourat.data_models import HNPostCollection, ScoredHNPostCollection
 from mourat.database import business_domain as bd
 from mourat.database import create_connection

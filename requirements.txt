@@ -4,6 +4,7 @@ rich >= 14.0.0
 feedparser
 httpx
 requests
+PySocks
 beautifulsoup4
 trafilatura
 

@@ -14,6 +14,8 @@ handlers:
 loggers:
   mourat:
     level: DEBUG
+  comourat:
+    level: DEBUG
   httpx:
     level: WARNING
   httpcore:

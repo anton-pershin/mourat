@@ -14,18 +14,26 @@ dependencies = [
   "feedparser",
   "httpx",
   "requests",
+  "PySocks",  # SOCKS proxies need it; requests reports a missing import
   "beautifulsoup4",
   "trafilatura",
   "pydantic",
   "pydantic-ai",
+  "comourat @ git+https://github.com/anton-pershin/comourat.git"
 ]
 
 [build-system]
 requires = ["hatchling >= 1.26", "versioningit"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.version]
 source = "versioningit"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mourat"]
 
 [tool.versioningit]
 default-version = "0.0.0"

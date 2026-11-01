@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from mourat.clients.hn_algolia import HNAlgoliaClient
+from comourat.clients.hn_algolia import HNAlgoliaClient
 
 NOW = 1_780_000_000  # fixed timestamp for deterministic tests
 

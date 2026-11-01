@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from mourat.clients.paper_graph import PaperIdentity
-from mourat.clients.semantic_scholar import SemanticScholarClient
+from comourat.clients.paper_graph import PaperIdentity
+from comourat.clients.semantic_scholar import SemanticScholarClient
 
 
 def response(payload, status_code=200):
@@ -79,8 +79,8 @@ def test_retry_after_is_used_for_rate_limit(monkeypatch):
         response({"title": "A paper", "externalIds": {}}),
     ]
     sleeps = []
-    monkeypatch.setattr("mourat.clients.semantic_scholar.time.sleep", sleeps.append)
-    monkeypatch.setattr("mourat.clients.semantic_scholar.random.uniform", lambda *_: 0)
+    monkeypatch.setattr("comourat.clients.semantic_scholar.time.sleep", sleeps.append)
+    monkeypatch.setattr("comourat.clients.semantic_scholar.random.uniform", lambda *_: 0)
     make_client(http)._resolve("ARXIV:1706.03762")
     assert sleeps == [7]
 

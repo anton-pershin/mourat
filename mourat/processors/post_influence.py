@@ -3,21 +3,17 @@
 Compares each post's raw upvote score against a per-subreddit reference
 level (measured by the calibration script, spec 16, and supplied via the
 `post_influence.references` config mapping). The influence-score formula
-lives in `compute_influence_score` alone; the pipeline structure (assessor
-and filter placement right after collection) is independent of the formula.
+lives in comourat's `compute_influence_score`; the pipeline structure
+(assessor and filter placement right after collection) is independent of
+the formula.
 """
 
 from __future__ import annotations
 
+from comourat.influence.post import compute_influence_score
 from mourat.base import Function
 from mourat.data_models import RedditPostCollection
 from mourat.monitoring import MonitoringHandler
-
-
-def compute_influence_score(score: int, reference: float) -> int:
-    """Saturating normalized influence: 0 -> 0, at reference -> 50, large -> 100."""
-    ratio = score / max(reference, 1)
-    return round(100 * ratio / (ratio + 1))
 
 
 class PostInfluenceAssessor(Function[RedditPostCollection, RedditPostCollection]):

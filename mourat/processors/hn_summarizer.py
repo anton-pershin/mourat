@@ -1,16 +1,17 @@
-"""HN summarizer: one structured LLM call per post."""
+"""HN summarizer: Function adapter over comourat's summarizer."""
 
 from __future__ import annotations
 
 import json
 import logging
-from time import perf_counter
 from types import SimpleNamespace
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
+from comourat.enrichment.summarizer import summarize_with_events
+from time import perf_counter
 from mourat.base import Function
 from mourat.data_models import HNPostCollection
 from mourat.monitoring import MonitoringHandler
@@ -102,40 +103,43 @@ class HNSummarizer(Function[HNPostCollection, HNPostCollection]):
 
     def _summarize_one(self, post, call_index: int, total_calls: int) -> str:
         prompt = self._build_prompt(post)
-        last_error = None
-        for attempt in range(self.retries + 1):
-            started_at = perf_counter()
-            try:
-                result = self.agent.run_sync(prompt)
-                summary = result.output.summary
-                if not isinstance(summary, str) or not summary.strip():
-                    raise ValueError("empty summary")
-                logger.info(
-                    "summarized HN post '%s' (%d/%d) | success | attempt %d/%d | %.2fs",
-                    post.title,
-                    call_index,
-                    total_calls,
-                    attempt + 1,
-                    self.retries + 1,
-                    perf_counter() - started_at,
-                )
-                return summary.strip()
-            except Exception as exc:
-                last_error = exc
-                logger.warning(
-                    "summarized HN post '%s' (%d/%d) | failed | attempt %d/%d | %.2fs | %s",
-                    post.title,
-                    call_index,
-                    total_calls,
-                    attempt + 1,
-                    self.retries + 1,
-                    perf_counter() - started_at,
-                    exc,
-                )
-        raise RuntimeError(
-            f"HN summarizer failed for post {post.hn_id} after "
-            f"{self.retries + 1} attempts: {last_error}"
-        )
+        try:
+            summary, events = summarize_with_events(
+                self.agent,
+                prompt,
+                retries=self.retries,
+                label=post.title,
+            )
+        except RuntimeError:
+            raise
+        for event in events:
+            self._log_progress(post, call_index, total_calls, event)
+        return summary
+
+    def _log_progress(
+        self, post, call_index: int, total_calls: int, event: dict
+    ) -> None:
+        if event["outcome"] == "success":
+            logger.info(
+                "summarized HN post '%s' (%d/%d) | success | attempt %d/%d | %.2fs",
+                post.title,
+                call_index,
+                total_calls,
+                event["attempt"],
+                self.retries + 1,
+                event["duration_s"],
+            )
+        else:
+            logger.warning(
+                "summarized HN post '%s' (%d/%d) | failed | attempt %d/%d | %.2fs | %s",
+                post.title,
+                call_index,
+                total_calls,
+                event["attempt"],
+                self.retries + 1,
+                event["duration_s"],
+                event["error"],
+            )
 
     def _run(self, data: HNPostCollection) -> tuple[HNPostCollection, str]:
         kept = []
