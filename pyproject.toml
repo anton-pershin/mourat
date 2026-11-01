@@ -19,6 +19,7 @@ dependencies = [
   "trafilatura",
   "pydantic",
   "pydantic-ai",
+  "comourat @ git+https://github.com/anton-pershin/comourat.git"
 ]
 
 [build-system]
@@ -29,7 +30,7 @@ build-backend = "hatchling.build"
 source = "versioningit"
 
 [tool.hatch.build.targets.wheel]
-packages = ["mourat", "comourat"]
+packages = ["mourat"]
 
 [tool.versioningit]
 default-version = "0.0.0"
