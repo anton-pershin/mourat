@@ -3,8 +3,9 @@ defaults:
   - user_settings: user_settings
   - hydra: base
   - monitoring_handler: via_md_files
-  - llm/caila_glm_5_3_flash@discovery_llm
-  - llm/caila_glm_5_3_flash@scoring_llm
+  - llm/caila_gpt_6_luna@discovery_llm
+  - llm/caila_gpt_6_luna@scoring_llm
+  - paper_graph_client: openalex
   - paper_discoverer: default
   - paper_resolver: default
   - influence_assessor: default
@@ -25,7 +26,8 @@ metadata_api_user_agent: "mourat/0.1 (mailto:contact@example.com)"
 # Research attribute ids to collect for (loaded from the database).
 # Leave a list empty to skip that kind of attribute; at least one must resolve.
 research_question_ids: []
-technical_challenge_ids: []
+technical_challenge_ids:
+  - lack_of_agent_determinism
 research_topic_ids: []
 constraint_ids: []
 

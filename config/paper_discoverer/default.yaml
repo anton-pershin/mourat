@@ -12,7 +12,7 @@ system_prompt: |
 
   Find the papers that are widely recognised as important or foundational work on the
   subject — seminal papers, highly cited surveys, or landmark results. Prefer papers you
-  can confirm by reading a page about them over papers you merely recall. Seek for diversity of approaches explored in the literature over the quantity. It is expected you can find about 20 influential papers.
+  can confirm by reading a page about them over papers you merely recall. Seek for diversity of approaches explored in the literature over the quantity. IMPORTANT: it is expected you can find about 20 influential papers.
 
   For each paper return:
   - `title`: the paper's title as the source page gives it.
@@ -23,9 +23,10 @@ system_prompt: |
 
   Do NOT return DOIs, arXiv ids or other identifiers — they are not collected.
   Only include a paper when you can name it precisely; do not guess titles.
+
 model_settings:
   timeout: 600
 retries: 3
-request_limit: 200
-tool_calls_limit: 100
+request_limit: 2000
+tool_calls_limit: 1000
 tool_call_rejection_buffer: 4
