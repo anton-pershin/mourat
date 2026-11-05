@@ -77,7 +77,7 @@ class TestWebEnricherProxyConfiguration:
             monitoring_handler=_make_monitoring_handler([]),
             model=MagicMock(),
         )
-        assert core.call_args.kwargs["proxy"] is None
+        assert core.call_args.kwargs.get("proxy") is None
 
 
 class TestWebEnricherAdditionalContext:

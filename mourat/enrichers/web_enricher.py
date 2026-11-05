@@ -39,16 +39,29 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         tool_call_rejection_buffer: int = 4,
         proxy: str | None = None,
     ) -> None:
-        self.core = EnrichmentAgent(
-            model=model,
-            system_prompt=system_prompt,
-            model_settings=model_settings,
-            retries=retries,
-            request_limit=request_limit,
-            tool_calls_limit=tool_calls_limit,
-            tool_call_rejection_buffer=tool_call_rejection_buffer,
-            proxy=proxy,
-        )
+        if proxy is None:
+            self.core = EnrichmentAgent(
+                model=model,
+                system_prompt=system_prompt,
+                model_settings=model_settings,
+                retries=retries,
+                request_limit=request_limit,
+                tool_calls_limit=tool_calls_limit,
+                tool_call_rejection_buffer=tool_call_rejection_buffer,
+            )
+        else:
+            self.core = EnrichmentAgent(
+                model=model,
+                system_prompt=system_prompt,
+                model_settings=model_settings,
+                retries=retries,
+                request_limit=request_limit,
+                tool_calls_limit=tool_calls_limit,
+                tool_call_rejection_buffer=tool_call_rejection_buffer,
+                # Cross-version compatibility: only updated comourat accepts proxy.
+                # pylint: disable-next=unexpected-keyword-arg
+                proxy=proxy,  # type: ignore[call-arg]
+            )
         super().__init__(monitoring_handler)
 
     def _run(

@@ -148,7 +148,7 @@ class TestPaperDiscoverer:
             model=MagicMock(),
             attribute_description="research description",
         )
-        assert core.call_args.kwargs["proxy"] is None
+        assert core.call_args.kwargs.get("proxy") is None
 
     def test_returns_paper_candidate_collection(self):
         handler = _make_monitoring_handler()
