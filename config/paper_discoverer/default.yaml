@@ -30,3 +30,4 @@ retries: 3
 request_limit: 2000
 tool_calls_limit: 1000
 tool_call_rejection_buffer: 4
+proxy: ${oc.env:SEMANTIC_SCHOLAR_PROXY,null}

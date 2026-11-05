@@ -12,12 +12,12 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from comourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
+from comourat.clients.semantic_scholar import SemanticScholarClient
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from comourat.clients.paper_graph import PaperIdentity, PaperPage, PaperRecord
-from comourat.clients.semantic_scholar import SemanticScholarClient
 from mourat.collectors.paper_discoverer import PaperDiscoverer
 from mourat.data_models import (
     PaperCandidate,
@@ -124,6 +124,32 @@ TC_LIST = [{"id": "tc1", "name": "TC one", "type": "tc", "description": "d"}]
 
 
 class TestPaperDiscoverer:
+    def test_proxy_is_forwarded_to_comourat_core(self, monkeypatch):
+        core = MagicMock()
+        monkeypatch.setattr(
+            "mourat.collectors.paper_discoverer.PaperDiscovererCore", core
+        )
+        proxy = "socks5h://proxy.example:1080"
+        PaperDiscoverer(
+            monitoring_handler=_make_monitoring_handler(),
+            model=MagicMock(),
+            attribute_description="research description",
+            proxy=proxy,
+        )
+        assert core.call_args.kwargs["proxy"] == proxy
+
+    def test_proxy_defaults_to_none(self, monkeypatch):
+        core = MagicMock()
+        monkeypatch.setattr(
+            "mourat.collectors.paper_discoverer.PaperDiscovererCore", core
+        )
+        PaperDiscoverer(
+            monitoring_handler=_make_monitoring_handler(),
+            model=MagicMock(),
+            attribute_description="research description",
+        )
+        assert core.call_args.kwargs["proxy"] is None
+
     def test_returns_paper_candidate_collection(self):
         handler = _make_monitoring_handler()
         discoverer = PaperDiscoverer(

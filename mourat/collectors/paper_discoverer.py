@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic_ai.exceptions import UsageLimitExceeded
-from pydantic_ai.models import Model
-
 from comourat.collectors.paper_discoverer import (
     SYSTEM_PROMPT,
     PaperDiscovererCore,
 )
 from comourat.models import PaperCandidateCollection
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.models import Model
+
 from mourat.base import Function
 from mourat.monitoring import MonitoringHandler
 
@@ -43,6 +43,7 @@ class PaperDiscoverer(Function[Any, PaperCandidateCollection]):
         request_limit: int = 30,
         tool_calls_limit: int = 15,
         tool_call_rejection_buffer: int = 4,
+        proxy: str | None = None,
     ) -> None:
         self.core = PaperDiscovererCore(
             model=model,
@@ -54,6 +55,7 @@ class PaperDiscoverer(Function[Any, PaperCandidateCollection]):
             request_limit=request_limit,
             tool_calls_limit=tool_calls_limit,
             tool_call_rejection_buffer=tool_call_rejection_buffer,
+            proxy=proxy,
         )
         super().__init__(monitoring_handler)
 

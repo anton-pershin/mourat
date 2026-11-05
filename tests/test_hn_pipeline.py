@@ -103,12 +103,13 @@ class _FakeResponse:
             raise requests.HTTPError(f"HTTP {self.status_code}")
 
 
-class _FakeSession:
+class _FakeSession(requests.Session):
     def __init__(self, responses):
+        super().__init__()
         self.responses = list(responses)
         self.proxies = {}
 
-    def get(self, url, timeout=None, headers=None):
+    def get(self, url, timeout=None, headers=None, allow_redirects=True):
         return self.responses.pop(0)
 
 
@@ -212,6 +213,7 @@ class TestHNSummarizer:
     def test_configured_model_uses_agent_structured_output(self, monkeypatch):
         # R7 review regression: exercise model->agent boundary using stub Model.
         from types import SimpleNamespace
+
         from mourat.processors import hn_summarizer
 
         calls = []
@@ -241,6 +243,7 @@ class TestHNSummarizer:
     def test_logs_one_progress_line_per_llm_call(self, caplog):
         import logging
         from types import SimpleNamespace
+
         from mourat.processors import hn_summarizer
 
         calls = []

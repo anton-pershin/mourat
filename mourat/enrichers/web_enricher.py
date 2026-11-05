@@ -10,6 +10,7 @@ from comourat.enrichment.enricher import (
     EnrichmentAgent,
 )
 from comourat.models import EnrichmentResult
+
 from mourat.base import Function
 from mourat.data_models import (
     EnrichedRedditPost,
@@ -36,6 +37,7 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         request_limit: int = 20,
         tool_calls_limit: int = 10,
         tool_call_rejection_buffer: int = 4,
+        proxy: str | None = None,
     ) -> None:
         self.core = EnrichmentAgent(
             model=model,
@@ -45,6 +47,7 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
             request_limit=request_limit,
             tool_calls_limit=tool_calls_limit,
             tool_call_rejection_buffer=tool_call_rejection_buffer,
+            proxy=proxy,
         )
         super().__init__(monitoring_handler)
 

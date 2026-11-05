@@ -61,13 +61,13 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [ ] Write the compatibility and configuration tests.
-2. [ ] Run the tests and confirm the expected failures.
-3. [ ] Update the scripted HN session to implement `requests.Session`.
-4. [ ] Add optional proxy forwarding to both adapters and their Hydra configurations.
-5. [ ] Revert the unrelated OpenAlex behavior change in comourat PR #8.
-6. [ ] Run focused compatibility tests and the full 399-test mourat suite.
-7. [ ] Run comourat tests and quality checks, then push and review both changes.
+1. [x] Write the compatibility and configuration tests.
+2. [x] Run the tests and confirm the expected failures.
+3. [x] Update the scripted HN session to implement `requests.Session`.
+4. [x] Add optional proxy forwarding to both adapters and their Hydra configurations.
+5. [x] Revert the unrelated OpenAlex behavior change in comourat PR #8.
+6. [x] Run focused compatibility tests and the full 399-test mourat suite.
+7. [x] Run comourat tests and quality checks, then push and review both changes.
 
 #### 3.4 Modification summary
 
