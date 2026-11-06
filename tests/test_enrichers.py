@@ -1,6 +1,7 @@
 """Unit tests for the web enricher (additional context points flow)."""
 
 import json
+from unittest.mock import MagicMock
 
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
@@ -55,6 +56,28 @@ def _single_post_collection(**overrides) -> RedditPostCollection:
 
 
 # --- Tests ---
+
+
+class TestWebEnricherProxyConfiguration:
+    def test_proxy_is_forwarded_to_comourat_core(self, monkeypatch):
+        core = MagicMock()
+        monkeypatch.setattr("mourat.enrichers.web_enricher.EnrichmentAgent", core)
+        proxy = "socks5h://proxy.example:1080"
+        WebEnricher(
+            monitoring_handler=_make_monitoring_handler([]),
+            model=MagicMock(),
+            proxy=proxy,
+        )
+        assert core.call_args.kwargs["proxy"] == proxy
+
+    def test_proxy_defaults_to_none(self, monkeypatch):
+        core = MagicMock()
+        monkeypatch.setattr("mourat.enrichers.web_enricher.EnrichmentAgent", core)
+        WebEnricher(
+            monitoring_handler=_make_monitoring_handler([]),
+            model=MagicMock(),
+        )
+        assert core.call_args.kwargs.get("proxy") is None
 
 
 class TestWebEnricherAdditionalContext:

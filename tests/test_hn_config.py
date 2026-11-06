@@ -38,6 +38,18 @@ def test_config_collect_hn_posts_composes(monkeypatch):
     assert "enricher" not in cfg
 
 
+def test_enricher_and_discovery_configs_compose_proxy(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_PROXY", "http://proxy.example:8080")
+    configs_dir = Path(__file__).resolve().parent.parent / "config"
+    with initialize_config_dir(config_dir=str(configs_dir), version_base="1.3"):
+        posts_cfg = compose(config_name="config_collect_posts")
+        papers_cfg = compose(
+            config_name="config_collect_influential_papers_from_scratch"
+        )
+    assert posts_cfg.enricher.proxy == "http://proxy.example:8080"
+    assert papers_cfg.paper_discoverer.proxy == "http://proxy.example:8080"
+
+
 def test_calibration_config_keys():
     from omegaconf import OmegaConf
 
