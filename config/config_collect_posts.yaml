@@ -24,6 +24,7 @@ enricher:
   system_prompt: ${enrichment.system_prompt}
   model_settings:
     timeout: ${enrichment.agent.timeout}
+  overall_timeout: ${enrichment.overall_timeout}
   retries: ${enrichment.agent.retries}
   request_limit: 20
   tool_calls_limit: 10
@@ -101,6 +102,9 @@ enrichment:
 
     Note that you have strict tool usage limits: one `web_search` call and three `extract_url` calls.
     Be frugal and smart in your choices and do not attempt to bypass these limits.
+  # One complete run can include a 300-second model request, web tools, retries,
+  # and output processing. This deadline does not extend the model timeout.
+  overall_timeout: 600
   agent:
     timeout: 300
     retries: 3

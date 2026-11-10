@@ -9,7 +9,7 @@ from comourat.enrichment.enricher import (
     DEFAULT_SYSTEM_PROMPT,
     EnrichmentAgent,
 )
-from comourat.models import EnrichmentResult
+from comourat.models import EnrichmentFailure, EnrichmentResult
 
 from mourat.base import Function
 from mourat.data_models import (
@@ -38,6 +38,7 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
         tool_calls_limit: int = 10,
         tool_call_rejection_buffer: int = 4,
         proxy: str | None = None,
+        overall_timeout: float = 120.0,
     ) -> None:
         if proxy is None:
             self.core = EnrichmentAgent(
@@ -48,6 +49,7 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                 request_limit=request_limit,
                 tool_calls_limit=tool_calls_limit,
                 tool_call_rejection_buffer=tool_call_rejection_buffer,
+                overall_timeout=overall_timeout,
             )
         else:
             self.core = EnrichmentAgent(
@@ -58,9 +60,8 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                 request_limit=request_limit,
                 tool_calls_limit=tool_calls_limit,
                 tool_call_rejection_buffer=tool_call_rejection_buffer,
-                # Cross-version compatibility: only updated comourat accepts proxy.
-                # pylint: disable-next=unexpected-keyword-arg
-                proxy=proxy,  # type: ignore[call-arg]
+                overall_timeout=overall_timeout,
+                proxy=proxy,
             )
         super().__init__(monitoring_handler)
 
@@ -78,17 +79,26 @@ class WebEnricher(Function[RedditPostCollection, EnrichedRedditPostCollection]):
                 f"URL: {post_info.url}\n"
                 f"Score: {post_info.score}\n"
                 f"Text: {post_info.text or '(no text)'}\n\n"
-                "Use extract_url to fetch the linked article, or web_search to find related info. "
-                "Return the list of additional context points (facts not already evident in the post)."
+                "Use extract_url to fetch the linked article, or web_search to find "
+                "related info. Return the list of additional context points "
+                "(facts not already evident in the post)."
             )
 
             t_post = time.monotonic()
             try:
                 result: EnrichmentResult = self.core.enrich(prompt)
-            except Exception as exc:
-                # UsageLimitExceeded and transport failures skip this post.
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                # Unexpected adapter failures skip this post.
                 logger.exception(
                     "enrichment failed for post %s: %s", post_info.submission_id, exc
+                )
+                continue
+            if isinstance(result, EnrichmentFailure):
+                logger.warning(
+                    "enrichment failed for post %s: category=%s, message=%s",
+                    post_info.submission_id,
+                    result.error_category,
+                    result.error_message,
                 )
                 continue
             post_s = time.monotonic() - t_post

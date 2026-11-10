@@ -80,13 +80,13 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [ ] Write the outcome, timeout, configuration, and dependency tests.
-2. [ ] Run the focused tests and confirm the expected failures with merged Comourat.
-3. [ ] Handle returned failures before successful-result processing.
-4. [ ] Forward the overall timeout and configure the 600-second Reddit value.
-5. [ ] Set dependency minimums, pin reviewed Comourat, and document both choices.
-6. [ ] Run the focused tests, full suite, formatting checks, pylint, and mypy.
-7. [ ] Commit and push the assigned branch, then open one pull request for issue #18.
+1. [x] Write the outcome, timeout, configuration, and dependency tests.
+2. [x] Run the focused tests and confirm the expected failures with merged Comourat.
+3. [x] Handle returned failures before successful-result processing.
+4. [x] Forward the overall timeout and configure the 600-second Reddit value.
+5. [x] Set dependency minimums, pin reviewed Comourat, and document both choices.
+6. [x] Run the focused tests, full suite, formatting checks, pylint, and mypy.
+7. [x] Commit and push the assigned branch, then open one pull request for issue #18.
 
 #### 3.4 Modification summary
 
