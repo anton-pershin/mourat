@@ -91,6 +91,7 @@ flowchart LR
 | `config/config_collect_hn_posts.yaml` | Modified: configure and document both timeout scopes |
 | `pyproject.toml` | Modified: select the reviewed Comourat commit and compatible Pydantic AI version |
 | `requirements.txt` | Modified: keep runtime installation dependencies consistent with package metadata |
-| `requirements_dev.txt` | Modified: declare the Pydantic AI version required by the selected Comourat contract |
+| `README.md` | Modified during the merge: document the selected Comourat revision and both contracts |
 | `tests/test_hn_pipeline.py` | Modified: update response doubles and add article contract regressions |
 | `tests/test_hn_config.py` | Modified: verify timeout configuration and dependency selection |
+| `tests/test_enrichers.py` | Modified during the merge: keep the inherited dependency assertion aligned with the selected Comourat revision |

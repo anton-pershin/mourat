@@ -50,6 +50,8 @@ def test_enricher_and_discovery_configs_compose_proxy(monkeypatch):
             config_name="config_collect_influential_papers_from_scratch"
         )
     assert posts_cfg.enricher.proxy == "http://proxy.example:8080"
+    assert posts_cfg.enricher.overall_timeout == 600
+    assert posts_cfg.enrichment.overall_timeout == 600
     assert papers_cfg.paper_discoverer.proxy == "http://proxy.example:8080"
 
 
