@@ -1,7 +1,13 @@
-"""Unit tests for the HN pipeline stages (spec 19)."""
+"""Unit tests for the HN pipeline stages (specs 19 and 24)."""
+
+import json
+import logging
+import threading
+from unittest.mock import MagicMock
 
 import pytest
 import requests
+from comourat.enrichment.page_fetch import ArticleFetchError
 
 from mourat.data_models import HNPostCollection, HNPostInfo
 from mourat.monitoring import MonitoringHandler
@@ -93,14 +99,29 @@ class TestHNInfluenceFilter:
 # -- Fetcher -------------------------------------------------------------------
 
 
+def _html(body: str, title: str | None = "Article title") -> str:
+    title_html = "" if title is None else f"<head><title>{title}</title></head>"
+    return f"<html>{title_html}<body>{body}</body></html>"
+
+
 class _FakeResponse:
-    def __init__(self, status_code=200, text="<html><body>hello world</body></html>"):
+    def __init__(
+        self,
+        status_code=200,
+        text=_html("hello world"),
+        url="https://example.com/final-article",
+    ):
         self.status_code = status_code
         self.text = text
+        self.url = url
+        self.closed = False
 
     def raise_for_status(self):
         if self.status_code >= 400:
             raise requests.HTTPError(f"HTTP {self.status_code}")
+
+    def close(self):
+        self.closed = True
 
 
 class _FakeSession(requests.Session):
@@ -110,33 +131,178 @@ class _FakeSession(requests.Session):
         self.proxies = {}
 
     def get(self, url, timeout=None, headers=None, allow_redirects=True):
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class TestHNContentFetcher:
-    def _run(self, handler, session, posts):
-        fetcher = HNContentFetcher(handler, http_session=session, proxy=None)
-        # trafilatura is stubbed via the fetcher's extractor injection point
+    def _run(self, handler, session, posts, **kwargs):
+        fetcher = HNContentFetcher(handler, http_session=session, proxy=None, **kwargs)
+        # Trafilatura is stubbed through the fetcher's extractor injection point.
         return fetcher(_collection(posts), step_id="2")
 
-    def test_success_and_failures(self, monkeypatch):
-        # T12 (R6, B4): 200+content kept; HTTP error and empty extraction dropped.
+    def test_success_assigns_plain_text_and_serializes_a_string(self, monkeypatch):
+        # Spec 24 T1: only ArticleResult.text reaches the HN model.
         monkeypatch.setattr(
             "mourat.processors.hn_fetcher._extract_main_content",
-            lambda html: "extracted text" if "hello" in html else None,
+            lambda html: "  extracted text  ",
+        )
+        handler = _CapturingHandler()
+        response = _FakeResponse(200)
+        out = self._run(handler, _FakeSession([response]), [_post(hn_id="success")])
+
+        assert [post.hn_id for post in out.posts] == ["success"]
+        assert type(out.posts[0].text) is str
+        assert out.posts[0].text == "extracted text"
+        serialized = json.loads(out.posts[0].model_dump_json())
+        assert serialized["text"] == "extracted text"
+        assert type(serialized["text"]) is str
+        assert response.closed
+
+    def test_expected_failures_drop_only_failed_posts(self, monkeypatch, caplog):
+        # Spec 24 T3: all expected categories are logged and later work continues.
+        provider_detail = "provider-private-detail"
+        extractor_detail = "extractor-private-detail"
+
+        def extract(html):
+            if "empty-text" in html:
+                return "  \n"
+            if "extractor-error" in html:
+                raise RuntimeError(extractor_detail)
+            return "  extracted text  "
+
+        monkeypatch.setattr(
+            "mourat.processors.hn_fetcher._extract_main_content", extract
+        )
+        responses = [
+            _FakeResponse(404),
+            _FakeResponse(200, _html("empty-text")),
+            _FakeResponse(200, _html("hello world", title=None)),
+            _FakeResponse(200, _html("extractor-error")),
+            _FakeResponse(503),
+            requests.ConnectionError(provider_detail),
+            requests.ConnectTimeout("connection-private-detail"),
+            _FakeResponse(200),
+        ]
+        expected_failures = [
+            ("unavailable", "unavailable"),
+            ("empty-text", "empty_extraction"),
+            ("missing-title", "empty_extraction"),
+            ("extractor-error", "extraction"),
+            ("http-provider", "provider"),
+            ("invalid-input", "invalid_input"),
+            ("connection-provider", "provider"),
+            ("connection-timeout", "timeout"),
+        ]
+        posts = [_post(hn_id=post_id) for post_id, _ in expected_failures]
+        posts[5].url = "not a URL"
+        posts.append(_post(hn_id="later-success"))
+        handler = _CapturingHandler()
+
+        with caplog.at_level(logging.DEBUG, logger="mourat.processors.hn_fetcher"):
+            out = self._run(handler, _FakeSession(responses), posts)
+
+        assert [post.hn_id for post in out.posts] == ["later-success"]
+        assert out.posts[0].text == "extracted text"
+        assert handler.calls[-1] == ("2", "HN content fetcher: 9 in, 1 out, 8 dropped")
+        records = [
+            record
+            for record in caplog.records
+            if record.name == "mourat.processors.hn_fetcher"
+        ]
+        assert len(records) == len(expected_failures)
+        for record, (post_id, category) in zip(records, expected_failures):
+            message = record.getMessage()
+            assert post_id in message
+            assert category in message
+            assert str(ArticleFetchError(category)) in message
+        assert provider_detail not in caplog.text
+        assert extractor_detail not in caplog.text
+        assert "connection-private-detail" not in caplog.text
+        assert all(
+            response.closed
+            for response in responses
+            if isinstance(response, _FakeResponse)
+        )
+
+    def test_overall_timeout_drops_only_failed_post(self, monkeypatch, caplog):
+        # Spec 24 T4: the overall deadline includes extraction time.
+        extraction_started = threading.Event()
+        release_extraction = threading.Event()
+
+        def extract(html):
+            if "slow-extraction" in html:
+                extraction_started.set()
+                release_extraction.wait(1)
+            return "extracted text"
+
+        monkeypatch.setattr(
+            "mourat.processors.hn_fetcher._extract_main_content", extract
         )
         handler = _CapturingHandler()
         session = _FakeSession(
             [
-                _FakeResponse(200, "hello world"),  # ok
-                _FakeResponse(404),  # dropped
-                _FakeResponse(200, "<html></html>"),  # empty extraction -> dropped
+                _FakeResponse(200, _html("slow-extraction")),
+                _FakeResponse(200),
             ]
         )
-        posts = [_post(hn_id=str(i)) for i in range(3)]
-        out = self._run(handler, session, posts)
-        assert [p.hn_id for p in out.posts] == ["0"]
-        assert out.posts[0].text == "extracted text"
+        posts = [_post(hn_id="slow"), _post(hn_id="later-success")]
+        try:
+            with caplog.at_level(logging.DEBUG, logger="mourat.processors.hn_fetcher"):
+                out = self._run(handler, session, posts, timeout=0.02)
+        finally:
+            release_extraction.set()
+
+        assert extraction_started.is_set()
+        assert [post.hn_id for post in out.posts] == ["later-success"]
+        assert handler.calls[-1] == ("2", "HN content fetcher: 2 in, 1 out, 1 dropped")
+        messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "mourat.processors.hn_fetcher"
+        ]
+        assert len(messages) == 1
+        assert "slow" in messages[0]
+        assert "timeout" in messages[0]
+        assert str(ArticleFetchError("timeout")) in messages[0]
+
+    def test_unexpected_adapter_failure_propagates(self, monkeypatch, caplog):
+        # Spec 24 T5: an adapter defect is not an expected article failure.
+        fetcher = HNContentFetcher(_CapturingHandler(), http_session=_FakeSession([]))
+        monkeypatch.setattr(
+            fetcher.core,
+            "fetch",
+            MagicMock(side_effect=RuntimeError("unexpected adapter defect")),
+        )
+        with caplog.at_level(logging.DEBUG, logger="mourat.processors.hn_fetcher"):
+            with pytest.raises(RuntimeError, match="unexpected adapter defect"):
+                fetcher(_collection([_post()]), step_id="2")
+        assert not [
+            record
+            for record in caplog.records
+            if record.name == "mourat.processors.hn_fetcher"
+        ]
+
+    def test_timeout_defaults_and_custom_values(self):
+        # Spec 24 T6: connection and overall operation scopes stay independent.
+        default_fetcher = HNContentFetcher(
+            _CapturingHandler(), http_session=_FakeSession([])
+        )
+        assert default_fetcher.core.timeout == 30
+        assert default_fetcher.core.operation_timeout == 30
+        assert default_fetcher.core.connection_timeout == 10
+
+        custom_fetcher = HNContentFetcher(
+            _CapturingHandler(),
+            http_session=_FakeSession([]),
+            timeout=45,
+            connection_timeout=2.5,
+        )
+        assert custom_fetcher.core.timeout == 45
+        assert custom_fetcher.core.operation_timeout == 45
+        assert custom_fetcher.core.connection_timeout == 2.5
 
     def test_proxy_passed_to_session(self, monkeypatch):
         # T13 (R6): configured proxy lands in the session's proxies dict.
@@ -145,7 +311,7 @@ class TestHNContentFetcher:
             lambda html: "t",
         )
         handler = _CapturingHandler()
-        session = _FakeSession([_FakeResponse(200, "hello world")])
+        session = _FakeSession([_FakeResponse(200)])
         fetcher = HNContentFetcher(
             handler, http_session=session, proxy="http://proxy:3128"
         )
@@ -181,7 +347,7 @@ class TestHNSummarizer:
             lambda html: "DISTINCT FETCHED ARTICLE BODY",
         )
         handler = _CapturingHandler()
-        session = _FakeSession([_FakeResponse(200, "hello world")])
+        session = _FakeSession([_FakeResponse(200)])
         fetcher = HNContentFetcher(handler, http_session=session, proxy=None)
         fetched = fetcher(_collection([_post(hn_id="1", points=60)]), step_id="2")
 
@@ -193,7 +359,7 @@ class TestHNSummarizer:
         assert "DISTINCT FETCHED ARTICLE BODY" not in out.posts[0].model_dump_json()
 
     def test_prompt_contains_title_and_content(self, monkeypatch):
-        # T15 (R7): prompt is exactly title + fetched content.
+        # T15 and spec 24 T2: the prompt contains only title + plain article text.
         from mourat.processors.hn_summarizer import HNSummarizer
 
         monkeypatch.setattr(
@@ -201,14 +367,17 @@ class TestHNSummarizer:
             lambda html: "DISTINCT FETCHED ARTICLE BODY",
         )
         handler = _CapturingHandler()
-        session = _FakeSession([_FakeResponse(200, "hello world")])
+        session = _FakeSession([_FakeResponse(200)])
         fetched = HNContentFetcher(handler, http_session=session, proxy=None)(
             _collection([_post(hn_id="1", title="My title", points=60)]), step_id="2"
         )
         llm = _StubLLM(['{"summary": "summary"}'])
         HNSummarizer(handler, llm=llm, retries=1)(fetched, step_id="3")
-        assert "My title" in llm.prompts[0]
-        assert "DISTINCT FETCHED ARTICLE BODY" in llm.prompts[0]
+        assert llm.prompts[0] == (
+            "Title: My title\n\nContent:\nDISTINCT FETCHED ARTICLE BODY"
+        )
+        assert "source_url=" not in llm.prompts[0]
+        assert "ArticleResult" not in llm.prompts[0]
 
     def test_configured_model_uses_agent_structured_output(self, monkeypatch):
         # R7 review regression: exercise model->agent boundary using stub Model.
@@ -289,9 +458,7 @@ class TestHNSummarizer:
             "mourat.processors.hn_fetcher._extract_main_content", lambda html: "t"
         )
         handler = _CapturingHandler()
-        session = _FakeSession(
-            [_FakeResponse(200, "hello world"), _FakeResponse(200, "hello world")]
-        )
+        session = _FakeSession([_FakeResponse(200), _FakeResponse(200)])
         fetched = HNContentFetcher(handler, http_session=session, proxy=None)(
             _collection([_post(hn_id="1", points=60), _post(hn_id="2", points=61)]),
             step_id="2",

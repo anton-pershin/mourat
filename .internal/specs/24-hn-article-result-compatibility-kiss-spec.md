@@ -74,13 +74,13 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests.
-2. [ ] Run the focused tests and confirm the expected failures.
-3. [ ] Adapt article text assignment and expected failure handling.
-4. [ ] Add timeout configuration and adapter documentation.
-5. [ ] Pin and document the compatible runtime dependencies.
-6. [ ] Run the complete test suite and quality checks without live network access.
-7. [ ] Coordinate the dependency revision with issue #18 and PR #21, then open the implementation PR.
+1. [x] Write the tests.
+2. [x] Run the focused tests and confirm the expected failures.
+3. [x] Adapt article text assignment and expected failure handling.
+4. [x] Add timeout configuration and adapter documentation.
+5. [x] Pin and document the compatible runtime dependencies.
+6. [x] Run the complete test suite and quality checks without live network access.
+7. [x] Coordinate the dependency revision with issue #18 and PR #21.
 
 #### 3.4 Modification summary
 

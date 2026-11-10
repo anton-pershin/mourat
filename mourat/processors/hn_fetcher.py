@@ -2,27 +2,39 @@
 
 from __future__ import annotations
 
-from comourat.enrichment.page_fetch import PageFetcher
+import logging
+
+from comourat.enrichment.page_fetch import (
+    ArticleFetchError,
+    PageFetcher,
+    extract_main_content,
+)
+
 from mourat.base import Function
 from mourat.data_models import HNPostCollection
 from mourat.monitoring import MonitoringHandler
 
 DEFAULT_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
 
+logger = logging.getLogger(__name__)
+
 
 def _extract_main_content(html: str) -> str | None:
     """Patch point retained for tests: delegates to comourat's extractor."""
-    from comourat.enrichment.page_fetch import extract_main_content
-
     return extract_main_content(html)
 
 
 class HNContentFetcher(Function[HNPostCollection, HNPostCollection]):
-    """Fetches each HN post's URL via the configured proxy and extracts content.
+    """Fetch plain article text for each HN post through Comourat.
 
-    Posts whose fetch or extraction fail or yield nothing extractable are
-    dropped (debug-logged); the survivors carry the extracted content in
-    their `text` field.
+    An article must have a non-empty extracted title and non-empty text. An
+    article without a title is dropped as `empty_extraction`, even when its
+    text is extractable. Other expected article failures are also debug-logged
+    and dropped one post at a time. Unexpected adapter exceptions propagate.
+
+    `timeout` limits the complete fetch and extraction operation. The separate
+    `connection_timeout` caps each connection attempt. Survivors carry only
+    `ArticleResult.text` in their `text` field.
     """
 
     def __init__(
@@ -30,7 +42,8 @@ class HNContentFetcher(Function[HNPostCollection, HNPostCollection]):
         monitoring_handler: MonitoringHandler,
         http_session=None,
         proxy: str | None = None,
-        timeout: int = 30,
+        timeout: float = 30,
+        connection_timeout: float = 10,
         text_for_monitoring_template: str = (
             "HN content fetcher: {before} in, {after} out, {dropped} dropped"
         ),
@@ -39,7 +52,9 @@ class HNContentFetcher(Function[HNPostCollection, HNPostCollection]):
             http_session=http_session,
             proxy=proxy,
             timeout=timeout,
-            # resolved at call time so tests can patch this module's function
+            connection_timeout=connection_timeout,
+            # Resolve at call time so tests can patch this module's function.
+            # pylint: disable-next=unnecessary-lambda
             extractor=lambda html: _extract_main_content(html),
         )
         self.text_for_monitoring_template = text_for_monitoring_template
@@ -49,11 +64,18 @@ class HNContentFetcher(Function[HNPostCollection, HNPostCollection]):
         kept = []
         dropped = 0
         for post in data.posts:
-            content = self.core.fetch(post.url)
-            if content is None:
+            try:
+                article = self.core.fetch(post.url)
+            except ArticleFetchError as exc:
                 dropped += 1
+                logger.debug(
+                    "article fetch failed for HN post %s | category=%s | %s",
+                    post.hn_id,
+                    exc.category,
+                    exc,
+                )
                 continue
-            post.text = content
+            post.text = article.text
             kept.append(post)
 
         text_for_monitoring = self.text_for_monitoring_template.format(

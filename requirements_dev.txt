@@ -3,3 +3,5 @@ isort
 pylint
 mypy
 pytest
+# Comourat's enrichment contract requires Agent.run_sync(timeout=...).
+pydantic-ai >= 2.64.0
