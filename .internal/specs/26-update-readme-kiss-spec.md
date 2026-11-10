@@ -24,6 +24,8 @@ Expected behavior variants:
 - **T5 (R1, R2, R3, R4, R5, B4):** A manual documentation review must compare setup instructions, writer defaults, examples, and pipeline descriptions with the scripts and Hydra files.
 - **T6 (Regression):** Run the complete pytest suite. All tests must pass without network access.
 
+Final verification: all 20 README checks pass. The complete suite passes with 438 tests. The suite used the pinned Comourat commit and `pydantic-ai` 2.66.0 in a temporary dependency directory. One dependency deprecation warning remains. The manual review confirmed the script statuses, stage order, writer defaults, environment variables, and database examples.
+
 ### 3. Implementation plan
 
 #### 3.1 Implementation repos
@@ -64,12 +66,12 @@ flowchart TD
 
 #### 3.3 Todo list
 
-1. [ ] Write the documentation consistency tests.
-2. [ ] Run the new tests and ensure that they fail against the old README.
-3. [ ] Rewrite the README from the script and Hydra configuration evidence.
-4. [ ] Run the documentation tests and complete the manual documentation review.
-5. [ ] Run the complete test suite and applicable quality checks.
-6. [ ] Update this specification with the completed checks and final file summary.
+1. [x] Write the documentation consistency tests.
+2. [x] Run the new tests and ensure that they fail against the old README.
+3. [x] Rewrite the README from the script and Hydra configuration evidence.
+4. [x] Run the documentation tests and complete the manual documentation review.
+5. [x] Run the complete test suite and applicable quality checks.
+6. [x] Update this specification with the completed checks and final file summary.
 
 #### 3.4 Modification summary
 
