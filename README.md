@@ -12,6 +12,15 @@ conda activate mourat
 ```bash
 pip install -r requirements.txt
 ```
+
+The package metadata, runtime requirements, and development requirements require
+`pydantic-ai` 2.64.0 or later. The package metadata and runtime requirements select
+Comourat commit `3ca8190f0907ed7515bebcf14f006494d5fa0a48`, which contains the
+reviewed explicit enrichment outcome contract from Comourat PR #12. Do not replace
+this full commit with the moving `main` branch. To select a newer Comourat revision,
+review its contract, update the full commit in both dependency declarations, and run
+the complete test suite and quality checks.
+
 3. Set up environment variables mentioned in `/config/user_settings/user_settings.yaml`. Currently, the config relies on Caila API but it is trivial to modify it to your needs
 4. Run one of the scripts `/mourat/scripts/XXX.py` and do not forget to modify the corresponding config file in `/config/config_XXX.yaml'
 ```bash
@@ -75,6 +84,10 @@ This is the replacement for the deprecated `print_reddit_summary.py`.
 - Research attributes for scoring are loaded from the database (no hardcoded lists).
 - Scoring uses `PostContentItemScorer`; its `score_filter` threshold is configured
   inline in the config.
+- `enrichment.agent.timeout` is 300 seconds for each model request.
+  `enrichment.overall_timeout` is 600 seconds for the complete enrichment run,
+  including model requests, web tools, retries, and output processing. The overall
+  deadline does not extend the model-request timeout.
 
 ### `collect_newest_papers.py`
 

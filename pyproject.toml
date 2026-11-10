@@ -18,8 +18,9 @@ dependencies = [
   "beautifulsoup4",
   "trafilatura",
   "pydantic",
-  "pydantic-ai",
-  "comourat @ git+https://github.com/anton-pershin/comourat.git"
+  "pydantic-ai >= 2.64.0",
+  # Reviewed enrichment outcome contract from Comourat PR #12.
+  "comourat @ git+https://github.com/anton-pershin/comourat.git@3ca8190f0907ed7515bebcf14f006494d5fa0a48"
 ]
 
 [build-system]
