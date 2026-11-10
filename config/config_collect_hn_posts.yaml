@@ -37,12 +37,13 @@ hn_influence:
     _partial_: true  # expect positional argument: monitoring_handler
     min_influence: ${hn_influence.min_influence}
 
-# Content fetcher: proxy-aware fetch + trafilatura
+# Content fetcher: proxy-aware article title and text extraction
 hn_fetcher:
   _target_: mourat.processors.hn_fetcher.HNContentFetcher
   _partial_: true  # expect positional argument: monitoring_handler
   proxy: ${oc.env:SEMANTIC_SCHOLAR_PROXY,null}
-  timeout: 30
+  timeout: 30  # complete fetch and extraction operation, in seconds
+  connection_timeout: 10  # cap for each connection attempt, in seconds
 
 # Summarizer: LLM compact description; unparseable output retried then dropped
 hn_summarizer:

@@ -1,5 +1,6 @@
-"""Test that the HN collection config composes (spec 19, T19)."""
+"""Test HN configuration and dependency selection (specs 19 and 24)."""
 
+import tomllib
 from pathlib import Path
 
 from hydra import compose, initialize_config_dir
@@ -20,6 +21,8 @@ def test_config_collect_hn_posts_composes(monkeypatch):
     assert "reference_level" in cfg.hn_influence
     assert "hn_fetcher" in cfg
     assert cfg.hn_fetcher.proxy == "http://proxy.example:8080"
+    assert cfg.hn_fetcher.timeout == 30
+    assert cfg.hn_fetcher.connection_timeout == 10
     assert "hn_summarizer" in cfg
     assert "retries" in cfg.hn_summarizer
     assert "scorer" in cfg
@@ -65,3 +68,22 @@ def test_calibration_config_keys():
         "tags",
     ]:
         assert key in cfg, key
+
+
+def test_hn_article_contract_dependencies_are_pinned():
+    # Spec 24 T8: runtime installation selects the same reviewed contract.
+    project_root = Path(__file__).resolve().parent.parent
+    with (project_root / "pyproject.toml").open("rb") as stream:
+        project_dependencies = tomllib.load(stream)["project"]["dependencies"]
+    requirement_dependencies = [
+        line.split("#", 1)[0].strip()
+        for line in (project_root / "requirements.txt").read_text().splitlines()
+        if line.split("#", 1)[0].strip()
+    ]
+    expected_comourat = (
+        "comourat @ git+https://github.com/anton-pershin/comourat.git@"
+        "d82a29f87b858024615f8f56c4059c11b043bdd9"
+    )
+    for dependencies in (project_dependencies, requirement_dependencies):
+        assert expected_comourat in dependencies
+        assert "pydantic-ai >= 2.64.0" in dependencies

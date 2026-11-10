@@ -229,7 +229,7 @@ class TestEnrichmentDependencies:
 
         comourat = (
             "comourat @ git+https://github.com/anton-pershin/comourat.git@"
-            "3ca8190f0907ed7515bebcf14f006494d5fa0a48"
+            "d82a29f87b858024615f8f56c4059c11b043bdd9"
         )
         assert comourat in project_dependencies
         assert comourat in runtime_requirements

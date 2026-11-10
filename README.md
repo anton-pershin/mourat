@@ -15,9 +15,10 @@ pip install -r requirements.txt
 
 The package metadata, runtime requirements, and development requirements require
 `pydantic-ai` 2.64.0 or later. The package metadata and runtime requirements select
-Comourat commit `3ca8190f0907ed7515bebcf14f006494d5fa0a48`, which contains the
-reviewed explicit enrichment outcome contract from Comourat PR #12. Do not replace
-this full commit with the moving `main` branch. To select a newer Comourat revision,
+Comourat commit `d82a29f87b858024615f8f56c4059c11b043bdd9`, which contains the
+reviewed explicit enrichment outcome contract from Comourat PR #12 and the reviewed
+article result and error contract from Comourat PR #13. Do not replace this full
+commit with the moving `main` branch. To select a newer Comourat revision,
 review its contract, update the full commit in both dependency declarations, and run
 the complete test suite and quality checks.
 
