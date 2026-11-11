@@ -39,6 +39,30 @@ feeds:
     mode: newest
     api_url: https://rss.arxiv.org/rss/cs.AI
     only_new_submissions: true
+  cs_cv:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/cs.CV
+    only_new_submissions: true
+  cs_ni:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/cs.NI
+    only_new_submissions: true
+  eess_sp:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/eess.SP
+    only_new_submissions: true
+  eess_sy:
+    _target_: mourat.collectors.arxiv.ArxivPaperCollector
+    _partial_: true
+    mode: newest
+    api_url: https://rss.arxiv.org/rss/eess.SY
+    only_new_submissions: true
 
 # Research attribute ids to collect for (loaded from the database).
 # Leave a list empty to skip that kind of attribute; at least one must resolve.
@@ -53,6 +77,11 @@ technical_challenge_ids:
   - irrelevant_skills_tools
   - efficient_compaction
   - lack_of_agent_determinism
+  - dl_ul_thr_model_inaccuracy
+  - handover_alg_complexity
+  - inaccurate_mr_localization
+  - moo
+  - parameter_and_kpi_uq
 research_topic_ids: []
 constraint_ids: []
 
