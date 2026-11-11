@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 from mourat.base import Function
 from mourat.data_models import ScoredPaperCollection
@@ -28,15 +29,13 @@ def _content_item_id(
 
 
 class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]):
-    """Writes scored papers to the content database.
+    """Write scored papers with atomic metadata, link, and identity updates.
 
-    A pass-through stage: returns its input unchanged so it composes after
-    the filter like any other stage and is independently enable-able.
-
-    Upserts on the derived content item id: the first run creates the
-    content item and its relevance links; a re-run refreshes the relevance
-    links of the already-stored paper instead of skipping it (FR4). Canonical
-    arXiv and DOI aliases join runs, and arXiv metadata remains primary.
+    A pass-through stage returns its input unchanged. A re-run refreshes the
+    stored paper and its relevance links. Canonical arXiv and DOI aliases join
+    runs, and arXiv metadata remains primary. If ``fail_on_error`` is enabled,
+    the first failed paper raises after its transaction rolls back. Otherwise,
+    the writer reports the failed item and continues with later papers.
     """
 
     def __init__(
@@ -46,11 +45,13 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
         source_type_id: str = "paper",
         platform_id: str = "web",
         influence_metric_id: str = "citations",
+        fail_on_error: bool = False,
     ) -> None:
         self.conn = conn
         self.source_type_id = source_type_id
         self.platform_id = platform_id
         self.influence_metric_id = influence_metric_id
+        self.fail_on_error = fail_on_error
         super().__init__(monitoring_handler)
 
     def _ensure_reference_rows(self) -> None:
@@ -71,85 +72,87 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
         ]:
             try:
                 create(*args)
-            except Exception:
+            except sqlite3.Error:
                 logger.debug("reference row already exists: %s", args[1])
 
     def _write_item(self, sp) -> str:
-        """Write one scored paper and return its outcome."""
+        """Write one scored paper in one transaction and return its outcome."""
         arxiv_id = getattr(sp.paper, "arxiv_id", None)
         doi = getattr(sp.paper, "doi", None)
-        resolution = resolve_paper_content_item_id(
-            self.conn,
-            title=sp.paper.title,
-            arxiv_id=arxiv_id,
-            doi=doi,
-        )
-        if resolution.preserve_existing:
-            logger.info(
-                "kept arXiv-primary metadata for paper '%s'; skipped DOI-only update",
-                sp.paper.title,
-            )
-            return "skipped"
-        item_id = resolution.content_item_id
-        authors = "; ".join(sp.paper.authors)
-        url = sp.paper.url or None
-
-        existing = ci.get_content_item(self.conn, item_id)
-        if existing is None:
-            try:
-                ci.create_content_item(
+        try:
+            with self.conn:
+                resolution = resolve_paper_content_item_id(
                     self.conn,
-                    id=item_id,
-                    name=sp.paper.title,
-                    source_type_id=self.source_type_id,
-                    platform_id=self.platform_id,
-                    influence_metric_id=self.influence_metric_id,
-                    description=sp.paper.abstract,
-                    url=url,
-                    published_at=sp.paper.publication_date,
-                    authors=authors or None,
-                    influence_score=sp.paper.influence_score,
+                    title=sp.paper.title,
+                    arxiv_id=arxiv_id,
+                    doi=doi,
+                    manage_transaction=False,
                 )
-            except Exception:
-                logger.exception(
-                    "failed to create content item for paper '%s'", sp.paper.title
-                )
-                return "failed"
-        else:
-            try:
-                ci.update_content_item(
-                    self.conn,
-                    id=item_id,
-                    name=sp.paper.title,
-                    description=sp.paper.abstract,
-                    url=url,
-                    published_at=sp.paper.publication_date,
-                    authors=authors or None,
-                    influence_score=sp.paper.influence_score,
-                )
-            except Exception:
-                logger.exception(
-                    "failed to update content item for paper '%s'", sp.paper.title
-                )
-                return "failed"
+                item_id = resolution.content_item_id
+                if resolution.preserve_existing:
+                    self._refresh_links(item_id, sp)
+                    register_paper_aliases(
+                        self.conn,
+                        content_item_id=item_id,
+                        arxiv_id=arxiv_id,
+                        doi=doi,
+                        manage_transaction=False,
+                    )
+                    logger.info(
+                        "kept arXiv-primary metadata for paper '%s'; "
+                        "refreshed links from DOI-only update",
+                        sp.paper.title,
+                    )
+                    return "skipped"
 
-        # Refresh relevance links: remove stale ones, then insert current.
-        self._refresh_links(item_id, sp)
-        register_paper_aliases(
-            self.conn,
-            content_item_id=item_id,
-            arxiv_id=arxiv_id,
-            doi=doi,
-        )
-        return "updated" if existing is not None else "created"
+                authors = "; ".join(sp.paper.authors)
+                url = sp.paper.url or None
+                existing = ci.get_content_item(self.conn, item_id)
+                if existing is None:
+                    ci.create_content_item(
+                        self.conn,
+                        id=item_id,
+                        name=sp.paper.title,
+                        source_type_id=self.source_type_id,
+                        platform_id=self.platform_id,
+                        influence_metric_id=self.influence_metric_id,
+                        description=sp.paper.abstract,
+                        url=url,
+                        published_at=sp.paper.publication_date,
+                        authors=authors or None,
+                        influence_score=sp.paper.influence_score,
+                        commit=False,
+                    )
+                else:
+                    ci.update_content_item(
+                        self.conn,
+                        id=item_id,
+                        name=sp.paper.title,
+                        description=sp.paper.abstract,
+                        url=url,
+                        published_at=sp.paper.publication_date,
+                        authors=authors or None,
+                        influence_score=sp.paper.influence_score,
+                        commit=False,
+                    )
+
+                self._refresh_links(item_id, sp)
+                register_paper_aliases(
+                    self.conn,
+                    content_item_id=item_id,
+                    arxiv_id=arxiv_id,
+                    doi=doi,
+                    manage_transaction=False,
+                )
+                return "updated" if existing is not None else "created"
+        except sqlite3.Error:
+            logger.exception("failed to write paper '%s'", sp.paper.title)
+            if self.fail_on_error:
+                raise
+            return "failed"
 
     def _refresh_links(self, item_id: str, sp) -> None:
-        """Replace the paper's relevance junction rows with the current scores.
-
-        All existing rows of the types present in this run's scores are removed
-        first, then the current rows are inserted — a re-run updates the
-        paper's relevance links instead of leaving them stale (FR4).
-        """
+        """Replace relevance junction rows with the current scores."""
         remove_dispatch = {
             "rq": ci.remove_item_research_question,
             "tc": ci.remove_item_technical_challenge,
@@ -174,7 +177,6 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
                 )
                 present_types.discard(link_type)
 
-        # Remove all stale rows of the types this run supplies...
         list_dispatch = {
             "rq": ci.list_item_research_questions,
             "tc": ci.list_item_technical_challenges,
@@ -186,15 +188,23 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
                 row["id"] for row in list_dispatch[link_type](self.conn, item_id)
             ]
             for old_id in existing_ids:
-                remove_dispatch[link_type](self.conn, item_id, old_id)
+                remove_dispatch[link_type](self.conn, item_id, old_id, commit=False)
 
-        # ...then insert the current rows.
         for se in sp.relevance_scores:
             try:
                 add_dispatch[se.type](
-                    self.conn, item_id, se.id, se.justification, int(se.score)
+                    self.conn,
+                    item_id,
+                    se.id,
+                    se.justification,
+                    int(se.score),
+                    commit=False,
                 )
-            except Exception:
+            except sqlite3.Error:
+                if self.fail_on_error:
+                    raise
+                # Legacy pipelines retain the paper when only a link cannot be
+                # written. The newest-paper pipeline uses strict mode instead.
                 logger.exception(
                     "failed to link paper '%s' to %s '%s'",
                     sp.paper.title,

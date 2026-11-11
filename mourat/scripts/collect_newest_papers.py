@@ -157,7 +157,7 @@ def _collect_arxiv(
         collector: ArxivPaperCollector = hydra.utils.instantiate(feed_cfg)(
             monitoring_handler, http_client
         )
-        batch: PaperCandidateCollection = collector({}, step_id="1")
+        batch: PaperCandidateCollection = collector({}, step_id=f"1-arxiv-{name}")
         for paper in batch.papers:
             paper.provenance = ["arxiv"]
         collection.papers.extend(batch.papers)
@@ -178,7 +178,7 @@ def _collect_semantic_scholar(
     collector: SemanticScholarNewestPaperCollector = hydra.utils.instantiate(
         semantic_scholar_cfg
     )(monitoring_handler, http_client)
-    collection: PaperCandidateCollection = collector({}, step_id="1")
+    collection: PaperCandidateCollection = collector({}, step_id="1-semantic_scholar")
     logger.info(
         "Semantic Scholar contributed %d papers before ledger and identity filters",
         len(collection.papers),
@@ -216,7 +216,7 @@ def _collect_and_merge(
         f"Cross-source records merged: {merge.merged_cross_source}",
         f"Candidates after merge: {len(merge.collection.papers)}",
     ]
-    monitoring_handler("1", "\n".join(merge_lines))
+    monitoring_handler("1-merge", "\n".join(merge_lines))
     logger.info("Newest-paper source merge: %s", "; ".join(merge_lines[1:]))
     return merge
 

@@ -91,16 +91,41 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
         )
         super().__init__(monitoring_handler)
 
+    def _retry_delay(self, attempt: int, retry_after: str | None = None) -> float:
+        try:
+            delay = (
+                max(float(retry_after), 0.0)
+                if retry_after is not None
+                else self.backoff_seconds * (2**attempt)
+            )
+        except ValueError:
+            delay = self.backoff_seconds * (2**attempt)
+        return delay + random.uniform(0.0, self.jitter_seconds)
+
     def _get(self, params: dict[str, Any]) -> dict[str, Any]:
         headers = {"x-api-key": self.api_key} if self.api_key else {}
         url = f"{self.api_url}/paper/search/bulk"
         for attempt in range(self.max_retries + 1):
-            response = self.http_client.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=self.timeout_seconds,
-            )
+            try:
+                response = self.http_client.get(
+                    url,
+                    params=dict(params),
+                    headers=headers,
+                    timeout=self.timeout_seconds,
+                )
+            except httpx.RequestError as exc:
+                if attempt >= self.max_retries:
+                    raise
+                delay = self._retry_delay(attempt)
+                logger.warning(
+                    "Semantic Scholar transport failed with %s; retrying in %.1fs",
+                    type(exc).__name__,
+                    delay,
+                )
+                if delay:
+                    time.sleep(delay)
+                continue
+
             if response.status_code == 200:
                 if self.regular_delay_seconds:
                     time.sleep(self.regular_delay_seconds)
@@ -110,16 +135,7 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
             if attempt >= self.max_retries:
                 response.raise_for_status()
 
-            retry_after = response.headers.get("Retry-After")
-            try:
-                delay = (
-                    max(float(retry_after), 0.0)
-                    if retry_after is not None
-                    else self.backoff_seconds * (2**attempt)
-                )
-            except ValueError:
-                delay = self.backoff_seconds * (2**attempt)
-            delay += random.uniform(0.0, self.jitter_seconds)
+            delay = self._retry_delay(attempt, response.headers.get("Retry-After"))
             logger.warning(
                 "Semantic Scholar bulk search failed with %s; retrying in %.1fs",
                 response.status_code,
@@ -213,6 +229,11 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
 
     def _run(self, data: Any) -> tuple[PaperCandidateCollection, str]:
         output = PaperCandidateCollection(papers=[])
+        logger.info(
+            "Semantic Scholar publication window: %s to %s (inclusive)",
+            self.start_date,
+            self.end_date,
+        )
         lines = [
             "# Publication window",
             f"{self.start_date.isoformat()} to {self.end_date.isoformat()} (inclusive)",

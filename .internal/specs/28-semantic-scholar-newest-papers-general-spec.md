@@ -116,8 +116,8 @@ The normal run queries one delayed date. `backfill_days` adds an earlier rolling
 - **Newest-paper candidate merge:** Pure logic that combines source collections, enforces Semantic Scholar-only eligibility, applies arXiv precedence, and reports counts.
 - **`paper_identity` database module:** Owns provider-ledger queries and updates, canonical alias lookup, alias registration, and content-item ID promotion or merge operations.
 - **`CandidateToResolvedConverter`:** Adds DOI to the existing conversion.
-- **`ContentItemDbWriter` and `JsonlWriter`:** Share DOI-aware ID derivation and alias lookup. The database writer preserves arXiv-primary metadata.
-- **`collect_newest_papers.py`:** Selects sources, computes collection inputs, opens the migrated database, filters and records the ledger, and calls the unchanged downstream tail.
+- **`ContentItemDbWriter` and `JsonlWriter`:** Share DOI-aware ID derivation and alias lookup. The database writer preserves arXiv-primary metadata and refreshes relevance links from DOI-only updates. Each paper's identity transition, metadata, links, and aliases use one transaction. The newest-paper configuration propagates write failures so they block the ledger; other pipelines retain failed-item reporting.
+- **`collect_newest_papers.py`:** Selects sources, computes collection inputs, opens the migrated database, filters and records the ledger, and calls the unchanged downstream tail. Distinct monitoring step IDs retain each arXiv feed report, the Semantic Scholar report, and the merge report.
 - **Hydra configuration:** Adds `sources` and a `semantic_scholar_newest` component group. Existing `feeds` remain the arXiv configuration.
 
 ### 6. Implementation plan
@@ -147,6 +147,7 @@ The normal run queries one delayed date. `backfill_days` adds an earlier rolling
 | `mourat/processors/newest_paper_merger.py` | New: source merge and Semantic Scholar eligibility logic. |
 | `mourat/database/paper_identity.py` | New: provider ledger, aliases, promotion, and merge operations. |
 | `mourat/database/schema.sql` | Modified: add durable provider-ledger and paper-alias tables. |
+| `mourat/database/content_item.py` | Modified: add optional commit controls for atomic paper-writer transactions. |
 | `mourat/data_models.py` | Modified: add the in-flight Semantic Scholar provider ID. |
 | `mourat/scripts/collect_newest_papers.py` | Modified: source selection, collection, ledger, and merge orchestration. |
 | `mourat/processors/candidate_converter.py` | Modified: preserve DOI. |
@@ -154,6 +155,7 @@ The normal run queries one delayed date. `backfill_days` adds an earlier rolling
 | `mourat/writers/jsonl_writer.py` | Modified: alias-aware duplicate checks. |
 | `config/config_collect_newest_papers.yaml` | Modified: add source selection and the new component group. |
 | `config/semantic_scholar_newest/default.yaml` | New: queries, window, API, retry, and pagination settings. |
+| `config/db_writer/authority.yaml` | Modified: stop the newest-paper run on a database write failure. |
 | `README.md` | Modified: document source selection, Semantic Scholar settings, recovery, identity, and output behavior. |
 | `tests/test_semantic_scholar_newest.py` | New: collector, window, merge, and ledger tests. |
 | `tests/test_newest_paper_script.py` | Modified: source-selection and DOI-only pipeline wiring. |

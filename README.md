@@ -124,8 +124,9 @@ items that already exist.
 
 Hydra writes run files below `MOURAT_HYDRA_PATH`, grouped by date and time. The default
 monitoring handler writes one Markdown file per pipeline step to the result directory.
-Logs show step starts, completion times, failures, and item counts where the component
-provides them.
+Newest-paper source collectors and their merge report use distinct step IDs, so their
+files do not overwrite each other. Logs show step starts, completion times, failures,
+and item counts where the component provides them.
 
 ## Active collection pipelines
 
@@ -159,7 +160,8 @@ identity merge → `RelevanceTriageClassifier` → `ArxivHtmlAffiliationFetcher`
 - A SQLite ledger records Semantic Scholar provider IDs after all enabled writers
   return. Later overlapping runs exclude these IDs before triage, including IDs of
   papers previously rejected as irrelevant. A failure before the final ledger step
-  leaves new IDs available for retry.
+  leaves new IDs available for retry. The newest-paper database writer stops on a
+  content, link, or alias write failure and rolls back the affected paper.
 - Candidates are deduplicated by normalized arXiv ID and DOI. arXiv metadata has
   precedence, while Semantic Scholar can add DOI and provenance data. A paper found
   only through Semantic Scholar must have a non-arXiv DOI and a provider paper ID.

@@ -189,6 +189,25 @@ def test_bulk_search_follows_tokens_and_applies_local_cap():
     assert http.get.call_count == 1
 
 
+def test_uncapped_bulk_search_follows_tokens_until_the_result_set_ends():
+    http = MagicMock()
+    http.get.side_effect = [
+        _response({"data": [_paper("ss-1")], "token": "page-two"}),
+        _response({"data": [_paper("ss-2")], "token": "page-three"}),
+        _response({"data": [_paper("ss-3")], "token": None}),
+    ]
+    result = _collector(http, max_results_per_query=None)({}, "1")
+
+    assert [paper.semantic_scholar_id for paper in result.papers] == [
+        "ss-1",
+        "ss-2",
+        "ss-3",
+    ]
+    assert http.get.call_count == 3
+    assert http.get.call_args_list[1].kwargs["params"]["token"] == "page-two"
+    assert http.get.call_args_list[2].kwargs["params"]["token"] == "page-three"
+
+
 def test_bulk_search_excludes_missing_and_out_of_window_publication_dates():
     http = MagicMock()
     http.get.return_value = _response(
@@ -244,6 +263,29 @@ def test_bounded_retry_recovers_and_exhaustion_raises(monkeypatch):
     ]
     with pytest.raises(httpx.HTTPStatusError):
         _collector(http, max_retries=1)({}, "1")
+    assert http.get.call_count == 2
+
+
+def test_transport_errors_use_the_same_bounded_retry_policy(monkeypatch):
+    from mourat.collectors import semantic_scholar_newest
+
+    sleeps = []
+    monkeypatch.setattr(semantic_scholar_newest.time, "sleep", sleeps.append)
+    request = httpx.Request("GET", "https://example.com")
+    http = MagicMock()
+    http.get.side_effect = [
+        httpx.ConnectError("connection failed", request=request),
+        _response({"data": [_paper()], "token": None}),
+    ]
+    result = _collector(http, max_retries=1, backoff_seconds=1)({}, "1")
+
+    assert len(result.papers) == 1
+    assert sleeps == [1.0]
+
+    http.reset_mock()
+    http.get.side_effect = httpx.TimeoutException("timeout", request=request)
+    with pytest.raises(httpx.TimeoutException):
+        _collector(http, max_retries=1, backoff_seconds=0)({}, "1")
     assert http.get.call_count == 2
 
 

@@ -19,6 +19,7 @@ def create_content_item(
     published_at: str | None = None,
     authors: str | None = None,
     influence_score: int | None = None,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "INSERT INTO content_items "
@@ -38,7 +39,8 @@ def create_content_item(
             influence_metric_id,
         ),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def get_content_item(conn: sqlite3.Connection, id: str) -> dict | None:
@@ -58,6 +60,7 @@ def update_content_item(
     published_at: str | None = None,
     authors: str | None = None,
     influence_score: int | None = None,
+    commit: bool = True,
 ) -> None:
     fields = []
     values = []
@@ -79,7 +82,8 @@ def update_content_item(
         return
     values.append(id)
     conn.execute(f"UPDATE content_items SET {', '.join(fields)} WHERE id = ?", values)
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def delete_content_item(conn: sqlite3.Connection, id: str) -> None:
@@ -188,6 +192,7 @@ def add_item_technical_challenge(
     challenge_id: str,
     justification: str = "",
     relevance_score: int | None = None,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "INSERT INTO item_technical_challenges "
@@ -195,18 +200,23 @@ def add_item_technical_challenge(
         "VALUES (?, ?, ?, ?)",
         (content_id, challenge_id, justification, relevance_score),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def remove_item_technical_challenge(
-    conn: sqlite3.Connection, content_id: str, challenge_id: str
+    conn: sqlite3.Connection,
+    content_id: str,
+    challenge_id: str,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "DELETE FROM item_technical_challenges "
         "WHERE content_id = ? AND challenge_id = ?",
         (content_id, challenge_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def list_item_technical_challenges(
@@ -231,6 +241,7 @@ def add_item_research_question(
     question_id: str,
     justification: str = "",
     relevance_score: int | None = None,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "INSERT INTO item_research_questions "
@@ -238,17 +249,22 @@ def add_item_research_question(
         "VALUES (?, ?, ?, ?)",
         (content_id, question_id, justification, relevance_score),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def remove_item_research_question(
-    conn: sqlite3.Connection, content_id: str, question_id: str
+    conn: sqlite3.Connection,
+    content_id: str,
+    question_id: str,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "DELETE FROM item_research_questions WHERE content_id = ? AND question_id = ?",
         (content_id, question_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def list_item_research_questions(
@@ -273,6 +289,7 @@ def add_item_research_topic(
     topic_id: str,
     justification: str = "",
     relevance_score: int | None = None,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "INSERT INTO item_research_topics "
@@ -280,17 +297,22 @@ def add_item_research_topic(
         "VALUES (?, ?, ?, ?)",
         (content_id, topic_id, justification, relevance_score),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def remove_item_research_topic(
-    conn: sqlite3.Connection, content_id: str, topic_id: str
+    conn: sqlite3.Connection,
+    content_id: str,
+    topic_id: str,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "DELETE FROM item_research_topics WHERE content_id = ? AND topic_id = ?",
         (content_id, topic_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def list_item_research_topics(conn: sqlite3.Connection, content_id: str) -> list[dict]:
@@ -313,6 +335,7 @@ def add_item_constraint(
     constraint_id: str,
     justification: str = "",
     relevance_score: int | None = None,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "INSERT INTO item_constraints "
@@ -320,17 +343,22 @@ def add_item_constraint(
         "VALUES (?, ?, ?, ?)",
         (content_id, constraint_id, justification, relevance_score),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def remove_item_constraint(
-    conn: sqlite3.Connection, content_id: str, constraint_id: str
+    conn: sqlite3.Connection,
+    content_id: str,
+    constraint_id: str,
+    commit: bool = True,
 ) -> None:
     conn.execute(
         "DELETE FROM item_constraints WHERE content_id = ? AND constraint_id = ?",
         (content_id, constraint_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def list_item_constraints(conn: sqlite3.Connection, content_id: str) -> list[dict]:

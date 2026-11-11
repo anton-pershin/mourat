@@ -436,7 +436,9 @@ class _SemanticScholarResponse:
         return None
 
 
-def _run_semantic_scholar_script(tmp_path, monkeypatch, output_path=None):
+def _run_semantic_scholar_script(
+    tmp_path, monkeypatch, output_path=None, fail_db_write=False
+):
     conn, dbfile = _init_db(tmp_path)
     conn.close()
     output_path = output_path or tmp_path / "out.jsonl"
@@ -522,6 +524,15 @@ def _run_semantic_scholar_script(tmp_path, monkeypatch, output_path=None):
         return real_instantiate(cfg_node, *args, **kwargs)
 
     monkeypatch.setattr(_hydra.utils, "instantiate", smart_instantiate)
+    if fail_db_write:
+
+        def fail_create(*args, **kwargs):
+            raise sqlite3.DatabaseError("injected database write failure")
+
+        monkeypatch.setattr(
+            "mourat.writers.db_writer.ci.create_content_item", fail_create
+        )
+
     from mourat.scripts.collect_newest_papers import collect_newest_papers_main
 
     collect_newest_papers_main(cfg)
@@ -573,6 +584,8 @@ def test_both_sources_write_combined_output_with_arxiv_precedence(
             "semantic_scholar_newest.regular_delay_seconds=0",
             "semantic_scholar_newest.backoff_seconds=0",
             "semantic_scholar_newest.jitter_seconds=0",
+            "monitoring_handler=via_md_files",
+            f"result_dir={tmp_path}",
         ],
     )
     scripted = [
@@ -689,6 +702,14 @@ def test_both_sources_write_combined_output_with_arxiv_precedence(
 
     collect_newest_papers_main(cfg)
 
+    arxiv_monitor = (tmp_path / "step_1-arxiv-cs_lg.md").read_text()
+    semantic_monitor = (tmp_path / "step_1-semantic_scholar.md").read_text()
+    merge_monitor = (tmp_path / "step_1-merge.md").read_text()
+    assert "http://fake/rss" in arxiv_monitor
+    assert "# Publication window" in semantic_monitor
+    assert "2024-01-02 to 2024-01-02" in semantic_monitor
+    assert "# Source merge" in merge_monitor
+
     records = [
         json.loads(line)
         for line in Path(cfg.jsonl_output_path).read_text().splitlines()
@@ -727,6 +748,19 @@ def test_failure_before_writers_finish_leaves_ledger_retryable(tmp_path, monkeyp
             monkeypatch,
             output_path=tmp_path / "missing" / "out.jsonl",
         )
+
+    dbfile = next(tmp_path.glob("*.db"))
+    conn = init_db(dbfile)
+    assert list_semantic_scholar_ledger_ids(conn) == set()
+    conn.close()
+
+
+def test_database_writer_failure_does_not_record_ledger(tmp_path, monkeypatch):
+    from mourat.database import init_db
+    from mourat.database.paper_identity import list_semantic_scholar_ledger_ids
+
+    with pytest.raises(sqlite3.DatabaseError):
+        _run_semantic_scholar_script(tmp_path, monkeypatch, fail_db_write=True)
 
     dbfile = next(tmp_path.glob("*.db"))
     conn = init_db(dbfile)

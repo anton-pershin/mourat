@@ -68,7 +68,7 @@ No insight is needed.
 
 #### 5.1. High-level design
 
-Solid arrows show pipeline data flow and output writes. Dashed arrows show database reads. Each collection workflow stores items only on request.
+Solid arrows show pipeline data flow and output writes. Dashed arrows show database reads and collection-ledger writes. Each collection workflow stores items only on request.
 
 collect_newest_papers.py — Newest papers
 
@@ -85,6 +85,8 @@ flowchart LR
   NDB -->|"store on request"| DB
   NJ --> NFILE[("JSONL output")]
 ```
+
+Newest-paper sources have different date semantics. arXiv uses RSS announcements and can retain only new submissions. Semantic Scholar uses bibliographic publication dates in a configured delayed window. Its publication date does not show when Semantic Scholar indexed the paper. Optional backfill and the collection ledger support repeated runs.
 
 collect_influential_papers_from_scratch.py — Influential papers from scratch
 

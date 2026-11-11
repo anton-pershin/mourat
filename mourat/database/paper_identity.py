@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections.abc import Iterable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -208,6 +209,7 @@ def resolve_paper_content_item_id(
     title: str,
     arxiv_id: str | None = None,
     doi: str | None = None,
+    manage_transaction: bool = True,
 ) -> PaperIdentityResolution:
     """Resolve aliases and merge or promote existing rows when required."""
     identity = canonical_identity(arxiv_id=arxiv_id, doi=doi)
@@ -235,7 +237,8 @@ def resolve_paper_content_item_id(
     preserve_existing = identity.arxiv_id is None and bool(arxiv_rows)
     target_id = arxiv_rows[0] if preserve_existing else preferred_id
 
-    with conn:
+    transaction = conn if manage_transaction else nullcontext()
+    with transaction:
         target_exists = conn.execute(
             "SELECT 1 FROM content_items WHERE id = ?", (target_id,)
         ).fetchone()
@@ -256,6 +259,7 @@ def register_paper_aliases(
     content_item_id: str,
     arxiv_id: str | None = None,
     doi: str | None = None,
+    manage_transaction: bool = True,
 ) -> None:
     """Store all known aliases for one persisted paper."""
     identity = canonical_identity(arxiv_id=arxiv_id, doi=doi)
@@ -264,7 +268,8 @@ def register_paper_aliases(
         aliases.append(("arxiv", identity.arxiv_id))
     if identity.doi:
         aliases.append(("doi", identity.doi))
-    with conn:
+    transaction = conn if manage_transaction else nullcontext()
+    with transaction:
         for identity_type, identity_value in aliases:
             conn.execute(
                 "INSERT INTO paper_identities "

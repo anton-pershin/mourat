@@ -31,6 +31,7 @@
 | Term | Definition |
 |------|------------|
 | New submission | An arXiv RSS entry announced as new, rather than as a replacement or cross-listing. |
+| Semantic Scholar publication window | An inclusive range of bibliographic publication dates used for Semantic Scholar collection. It is not an ingestion-date range and has no arXiv announce-type equivalent. |
 | Relevance triage | A preliminary boolean assessment of whether a paper is plausibly relevant to at least one specified research question, technical challenge, or research topic. Constraints are excluded. |
 | Author affiliation | An institution associated with an author, extracted from the paper's arXiv HTML page. |
 | Authority influence | An LLM assessment of author and institution authority, recorded as the paper's influence score. |
