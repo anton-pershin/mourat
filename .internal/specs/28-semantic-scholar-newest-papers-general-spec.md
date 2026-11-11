@@ -134,7 +134,7 @@ The normal run queries one delayed date. `backfill_days` adds an earlier rolling
 8. [x] Update the README, constitution design, and terminology.
 9. [x] Run focused tests, the complete suite, Black, isort, pylint, and mypy.
 10. [x] Review the final spec against the implementation and commit all changes on the assigned branch.
-11. [ ] Push the assigned branch and open one pull request for issue #28.
+11. [x] Push the assigned branch and open one pull request for issue #28.
 
 #### 6.2 Modification summary
 
