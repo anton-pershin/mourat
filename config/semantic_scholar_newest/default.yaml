@@ -15,7 +15,8 @@ stride_days: 1
 backfill_days: 90
 backfill_interval_days: 7
 
-# Null follows every continuation token. A positive value is an explicit cap.
+# Null processes every new record. A positive value caps processing per run.
+# Pagination always completes; deferred records keep the previous query dates.
 max_results_per_query: null
 max_retries: 4
 backoff_seconds: 2.0

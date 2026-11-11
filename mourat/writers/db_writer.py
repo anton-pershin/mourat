@@ -104,10 +104,29 @@ def _existing_content_item_id(conn, paper: ResolvedPaper) -> str | None:
     return existing[0] if existing else None
 
 
+def _existing_arxiv_identity(conn, existing_ids: list[str]) -> str | None:
+    """Retain arXiv precedence when an incoming record has only a DOI."""
+    if not _has_identity_table(conn):
+        return None
+    for item_id in existing_ids:
+        row = conn.execute(
+            "SELECT identity_value FROM paper_identities "
+            "WHERE content_item_id = ? AND identity_type = 'arxiv' "
+            "ORDER BY identity_value LIMIT 1",
+            (item_id,),
+        ).fetchone()
+        if row is not None:
+            return row["identity_value"]
+    return None
+
+
 def _reconcile_content_item_id(conn, paper: ResolvedPaper) -> str:
     """Make the preferred ID canonical and merge any legacy duplicates."""
-    canonical = _content_item_id(paper.title, paper.arxiv_id, paper.doi)
     existing = _existing_content_item_ids(conn, paper)
+    arxiv_id = normalize_arxiv_id(paper.arxiv_id)
+    if not arxiv_id:
+        arxiv_id = _existing_arxiv_identity(conn, existing)
+    canonical = _content_item_id(paper.title, arxiv_id, paper.doi)
     if not existing:
         return canonical
     if canonical not in existing:
@@ -147,25 +166,28 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
         super().__init__(monitoring_handler)
 
     def _ensure_reference_rows(self) -> None:
-        """Create the reference rows the content item FKs point at (idempotent)."""
-        for create, args in [
+        """Create reference rows without leaving a failed duplicate transaction."""
+        reference_rows = [
             (
-                ci.create_source_type,
-                (self.conn, self.source_type_id, "Paper", "Academic paper"),
+                "source_types",
+                (self.source_type_id, "Paper", "Academic paper"),
             ),
             (
-                ci.create_platform,
-                (self.conn, self.platform_id, "Web", "Discovered via web search"),
+                "platforms",
+                (self.platform_id, "Web", "Discovered via web search"),
             ),
             (
-                ci.create_influence_metric,
-                (self.conn, self.influence_metric_id, "Citations", "Citation count"),
+                "influence_metrics",
+                (self.influence_metric_id, "Citations", "Citation count"),
             ),
-        ]:
-            try:
-                create(*args)
-            except Exception:
-                logger.debug("reference row already exists: %s", args[1])
+        ]
+        with self.conn:
+            for table, values in reference_rows:
+                self.conn.execute(
+                    f"INSERT OR IGNORE INTO {table} (id, name, description) "
+                    "VALUES (?, ?, ?)",
+                    values,
+                )
 
     def _write_item(self, sp) -> str:
         """Write one scored paper; returns 'created', 'updated' or 'failed'."""

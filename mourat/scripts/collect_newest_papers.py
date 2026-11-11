@@ -160,13 +160,14 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
         )
 
     http_client = httpx.Client(
-        verify=True,
+        verify=False,
         timeout=httpx.Timeout(
             timeout=600,
             connect=5,
         ),
     )
     semantic_scholar_conn = None
+    semantic_scholar_http_client = None
     semantic_scholar_collector: SemanticScholarNewestPaperCollector | None = None
     writer_conn = None
     try:
@@ -185,11 +186,20 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
         if "semantic_scholar" in sources:
             semantic_scholar_conn = create_connection(db_path)
             apply_schema(semantic_scholar_conn)
+            # Keep legacy arXiv HTTP behavior unchanged. Semantic Scholar uses
+            # a separate verified connection because requests can carry a key.
+            semantic_scholar_http_client = httpx.Client(
+                verify=True,
+                timeout=httpx.Timeout(
+                    timeout=600,
+                    connect=5,
+                ),
+            )
             semantic_scholar_collector = hydra.utils.instantiate(
                 cfg.semantic_scholar_newest
             )(
                 monitoring_handler,
-                http_client,
+                semantic_scholar_http_client,
                 conn=semantic_scholar_conn,
             )
             batch = semantic_scholar_collector({}, step_id=step_id)
@@ -279,6 +289,12 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
             )
             db_writer(filtered, step_id=step_id)
 
+        # Close writer transactions before committing through the independent
+        # Semantic Scholar connection. This also rolls back a caught item error.
+        if writer_conn is not None:
+            writer_conn.close()
+            writer_conn = None
+
         # This is the only Semantic Scholar state commit point. Any exception
         # above leaves both the seen-paper ledger and query cursors unchanged.
         if semantic_scholar_collector is not None:
@@ -295,6 +311,8 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
             writer_conn.close()
         if semantic_scholar_conn is not None:
             semantic_scholar_conn.close()
+        if semantic_scholar_http_client is not None:
+            semantic_scholar_http_client.close()
         http_client.close()
 
 

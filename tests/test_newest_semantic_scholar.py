@@ -268,15 +268,93 @@ class TestSemanticScholarCollection:
         assert "externalIds" in params["fields"]
         assert http.get.call_args_list[1].kwargs["params"]["token"] == "next-token"
 
-    def test_result_limit_stops_pagination(self, db_conn):
+    def test_result_limit_preserves_backlog_and_cursor(self, db_conn):
         http = MagicMock()
-        http.get.return_value = _response({"data": [_paper_payload()], "token": "more"})
+        first_page = _response({"data": [_paper_payload()], "token": "more"})
+        second_page = _response(
+            {
+                "data": [
+                    _paper_payload(
+                        "s2-2",
+                        title="Second paper",
+                        externalIds={"DOI": "10.1000/second"},
+                    )
+                ],
+                "token": None,
+            }
+        )
+        http.get.side_effect = [first_page, second_page, first_page, second_page]
         collector = _collector(db_conn, http, max_results_per_query=1)
 
+        first = collector({}, "1")
+
+        assert [paper.title for paper in first.papers] == ["Semantic Scholar paper"]
+        assert collector.receipt.paper_ids == ["s2-1"]
+        assert collector.receipt.query_states == []
+        assert http.get.call_count == 2  # A processing cap never truncates pagination.
+        collector.commit()
+        assert s2db.load_query_state(db_conn, "machine learning") is None
+
+        second = collector({}, "1")
+
+        assert [paper.title for paper in second.papers] == ["Second paper"]
+        assert collector.receipt.paper_ids == ["s2-2"]
+        assert collector.receipt.query_states[0]["completed_end_date"] == date(
+            2026, 1, 30
+        )
+        collector.commit()
+        assert s2db.get_seen_paper_ids(db_conn, ["s2-1", "s2-2"]) == {
+            "s2-1",
+            "s2-2",
+        }
+
+    def test_capped_backlog_preserves_previous_backfill_date(self, db_conn):
+        s2db.record_successful_collection(
+            db_conn,
+            paper_ids=[],
+            query_states=[
+                {
+                    "query": "machine learning",
+                    "completed_end_date": date(2026, 1, 29),
+                    "backfill_completed_on": date(2026, 1, 31),
+                }
+            ],
+        )
+        http = MagicMock()
+        http.get.side_effect = [
+            _response({"data": [_paper_payload()], "token": None}),
+            _response(
+                {
+                    "data": [
+                        _paper_payload("s2-2", externalIds={"DOI": "10.1000/second"})
+                    ],
+                    "token": None,
+                }
+            ),
+            _response(
+                {
+                    "data": [
+                        _paper_payload("s2-3", externalIds={"DOI": "10.1000/third"})
+                    ],
+                    "token": None,
+                }
+            ),
+        ]
+        collector = _collector(
+            db_conn,
+            http,
+            max_results_per_query=1,
+            run_date=date(2026, 2, 2),
+            backfill_days=90,
+        )
+
         result = collector({}, "1")
+        collector.commit()
 
         assert len(result.papers) == 1
-        assert http.get.call_count == 1
+        state = s2db.load_query_state(db_conn, "machine learning")
+        assert state["last_completed_end_date"] == "2026-01-29"
+        assert state["last_backfill_completed_on"] == "2026-01-31"
 
     @patch("mourat.collectors.semantic_scholar_newest.time.sleep")
     def test_rate_limit_uses_retry_after(self, mock_sleep, db_conn):
@@ -446,6 +524,40 @@ class TestPersistentPaperIdentity:
             ("arxiv", "2401.00001"),
             ("doi", "10.1000/shared"),
         ]
+
+    def test_doi_only_update_preserves_existing_arxiv_identity(self, db_conn):
+        writer = ContentItemDbWriter(_Handler(), db_conn)
+        writer(
+            ScoredPaperCollection(
+                papers=[
+                    _scored(
+                        ResolvedPaper(
+                            title="Primary paper",
+                            doi="10.1000/shared",
+                            arxiv_id="2401.00001",
+                        )
+                    )
+                ]
+            ),
+            "8",
+        )
+
+        writer(
+            ScoredPaperCollection(
+                papers=[
+                    _scored(
+                        ResolvedPaper(
+                            title="Primary paper", doi="https://doi.org/10.1000/SHARED"
+                        )
+                    )
+                ]
+            ),
+            "8",
+        )
+
+        assert ci.get_content_item(db_conn, "paper_arxiv-2401.00001") is not None
+        assert ci.get_content_item(db_conn, "paper_doi-10.1000/shared") is None
+        assert db_conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0] == 1
 
     def test_jsonl_skip_existing_uses_doi_alias(self, db_conn, tmp_path):
         db_writer = ContentItemDbWriter(_Handler(), db_conn)

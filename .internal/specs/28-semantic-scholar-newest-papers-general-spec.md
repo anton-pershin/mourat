@@ -24,9 +24,9 @@ The `anton-pershin/mourat` repository only. The existing Comourat revision does 
 
 **FR3 — Hybrid publication-date schedule.** The source uses a delayed daily cursor with periodic backfill. The target end date is the UTC run date minus `publication_lag_days`, with a default lag of 30 days. A new query starts with one `stride_days` window, whose default size is one day. An existing query resumes after its last completed end date and catches up to the target end date in chunks of at most `stride_days`.
 
-The first run and each run for which `backfill_interval_days` has elapsed extend the requested range backwards by `backfill_days`. The defaults are a 90-day backfill every seven days. Overlapping normal and backfill ranges are combined. A zero backfill size disables backfill. `max_results_per_query` is optional; its default `null` follows every page so that no configured result limit causes omissions.
+The first run and each run for which `backfill_interval_days` has elapsed extend the requested range backwards by `backfill_days`. The defaults are a 90-day backfill every seven days. Overlapping normal and backfill ranges are combined. A zero backfill size disables backfill. `max_results_per_query` is optional; its default `null` processes every new record. Pagination always continues to exhaustion, including when a cap is set. A positive cap limits new records selected for downstream processing in one run. If records are deferred by the cap, the query cursor and last backfill date stay unchanged. The next run repeats the plan, filters committed IDs, and selects the next batch.
 
-**FR4 — Durable collection state.** SQLite stores the last completed end date and last backfill date for each query. It also stores each returned Semantic Scholar paper ID, including IDs of papers later excluded or rejected. Previously recorded IDs do not enter triage again. IDs returned by several queries in one run are combined before candidate conversion.
+**FR4 — Durable collection state.** SQLite stores the last completed end date and last backfill date for each query. It also stores each selected Semantic Scholar paper ID, including IDs of papers later excluded or rejected. Records deferred by a processing cap stay uncommitted until their later batch is selected. Previously recorded IDs do not enter triage again. IDs returned by several queries in one run are combined before candidate conversion.
 
 The pipeline commits new paper IDs and query cursors in one transaction only after collection, triage, influence assessment, scoring, filtering, and enabled writers finish. An exception before this point commits neither IDs nor cursors. A retry can therefore repeat work, but a failed run cannot advance past unprocessed papers.
 
@@ -40,11 +40,11 @@ The pipeline commits new paper IDs and query cursors in one transaction only aft
 
 #### 2.2 Non-functional requirements
 
-**NFR1 — Complete and bounded collection.** Pagination continues to exhaustion unless the user sets an explicit result limit. Each query and date range is visible in monitoring output. Paper-ID and cursor state advances only after successful completion.
+**NFR1 — Complete and bounded collection.** Pagination always continues to exhaustion. Each query and date range is visible in monitoring output. Paper-ID and cursor state advances only after successful completion. A query with records deferred by a processing cap keeps its previous cursor and backfill dates.
 
 **NFR2 — API failure handling.** Rate-limit and server responses use bounded retries, exponential backoff, and `Retry-After` when supplied. Other client errors fail the run. Request delays and retry settings are configurable. Tests do not make live network requests.
 
-**NFR3 — Existing behavior.** The legacy Semantic Scholar collector and other pipelines retain their public behavior. The full existing test suite and repository quality checks pass.
+**NFR3 — Existing behavior.** The legacy Semantic Scholar collector and other pipelines retain their public behavior. ArXiv-only HTTP behavior stays unchanged; Semantic Scholar uses a separate TLS-verifying client because its requests can carry an API key. The full existing test suite and repository quality checks pass.
 
 ### 3. Acceptance criteria
 
@@ -52,13 +52,13 @@ The project has no validation subproject. Mocked unit and integration tests veri
 
 **AC1 (FR1, FR8).** Configuration tests cover both sources, arXiv only, and Semantic Scholar only. Tests also cover empty, duplicate, and unknown source selections, and the required query setting.
 
-**AC2 (FR2, FR3, NFR1, NFR2).** Mocked HTTP tests verify query parameters, requested fields, API-key headers, date ranges, continuation tokens, result limits, identifier conversion, retries, and complete pagination. Date-planning tests cover a new query, daily resume, a missed-run catch-up, a periodic backfill, disabled backfill, and an already current cursor.
+**AC2 (FR2, FR3, NFR1, NFR2).** Mocked HTTP tests verify query parameters, requested fields, API-key headers, date ranges, continuation tokens, identifier conversion, retries, and complete pagination with and without a processing cap. A two-run cap test verifies that deferred records arrive in the next batch and that the cursor advances only then. Another test verifies that a capped run preserves the previous backfill date. Date-planning tests cover a new query, daily resume, a missed-run catch-up, a periodic backfill, disabled backfill, and an already current cursor.
 
-**AC3 (FR4).** Database tests verify durable seen IDs and query state. An integration test proves that seen papers do not repeat triage and that state does not advance when a later stage raises an exception. A successful run commits all returned IDs, including irrelevant and no-DOI papers, in one transaction.
+**AC3 (FR4).** Database tests verify durable seen IDs and query state. A second-run integration test proves that triage receives no seen papers and that an empty database-writer batch does not block the state commit. Another integration test proves that state does not advance when a later stage raises an exception. A successful run commits all selected IDs, including irrelevant and no-DOI papers, in one transaction.
 
 **AC4 (FR5, FR6).** Tests verify Semantic Scholar candidate mapping, no-DOI exclusion, unknown affiliations for DOI-only papers, and DOI preservation by the converter. Dedup tests cover DOI matches, arXiv matches, duplicates across queries, arXiv metadata precedence, and merged provenance.
 
-**AC5 (FR7).** Writer tests cover arXiv-first, DOI-first, and title-fallback IDs; DOI normalization; repeated writes; DOI-first followed by arXiv enrichment; and JSONL skip-existing by either identity. A both-source integration test writes one row and one JSONL record for a shared paper and includes a DOI-only paper.
+**AC5 (FR7).** Writer tests cover arXiv-first, DOI-first, and title-fallback IDs; DOI normalization; repeated writes; DOI-first followed by arXiv enrichment; preservation of arXiv identity during a later DOI-only update; and JSONL skip-existing by either identity. A both-source integration test writes one row and one JSONL record for a shared paper and includes a DOI-only paper.
 
 **AC6 (FR8, NFR3).** Documentation checks include the new producer and dedup stage in pipeline order. The legacy collector tests and the complete test suite pass. Formatting, import-order, and error-level static checks pass.
 
@@ -114,7 +114,7 @@ flowchart LR
 
 #### 5.2 Core components
 
-- `SemanticScholarNewestPaperCollector` plans query windows, performs bulk search, combines new records, and returns candidates. Its receipt contains all new provider IDs and the query states that a later commit will write.
+- `SemanticScholarNewestPaperCollector` plans query windows, performs complete bulk-search pagination, combines new records, and returns selected candidates. Its receipt contains selected provider IDs and the completed query states that a later commit will write. Deferred IDs and incomplete query states stay out of the receipt.
 - `mourat.database.semantic_scholar` owns seen-ID queries and transactional state commits.
 - `PaperCandidateDeduplicator` applies DOI exclusion and arXiv precedence before expensive stages.
 - `ContentItemDbWriter` and `JsonlWriter` share canonical identity helpers. SQLite paper aliases preserve one row when source identifiers become available in different runs.

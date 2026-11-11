@@ -132,8 +132,10 @@ For Semantic Scholar, `semantic_scholar_newest.queries` supplies one or more str
 keyword queries. The collector uses publication date ranges, not the date when Semantic
 Scholar indexed a paper. Its default schedule uses a 30-day lag and one-day request
 strides. It also runs a 90-day backfill on the first run and every seven days. The lag,
-stride, backfill, request delays, retries, and optional result limit are configurable.
-The default null result limit follows every continuation token.
+stride, backfill, request delays, retries, and optional processing limit are configurable.
+Every request follows all continuation tokens. A positive `max_results_per_query` limits
+new records processed in one run, not API pagination. Deferred records stay uncommitted,
+and the query repeats its previous date plan on the next run.
 
 **Pipeline:**
 
@@ -157,7 +159,9 @@ The default null result limit follows every continuation token.
 - SQLite stores a seen-paper ledger and a cursor for each Semantic Scholar query. Seen
   papers do not repeat triage, including papers rejected earlier. The script commits this
   state after all downstream stages and enabled writers succeed. A failed run does not
-  advance the cursor or the ledger, so a retry can process the same papers again.
+  advance the cursor or the ledger, so a retry can process the same papers again. A run
+  with records deferred by the processing limit also keeps the previous cursor and
+  backfill dates until all deferred records have been processed.
 - Paper storage uses arXiv identity first, DOI second, and a title slug only when neither
   identifier is available. Persistent aliases prevent a DOI-only row and a later arXiv
   record from becoming two rows. The JSONL writer can skip existing papers through the

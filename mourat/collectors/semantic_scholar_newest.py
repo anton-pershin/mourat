@@ -211,7 +211,6 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
         query: str,
         start: date,
         end: date,
-        max_results: int | None,
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
             "query": query,
@@ -221,15 +220,11 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
         }
         records: list[dict[str, Any]] = []
         token: str | None = None
-        while max_results is None or len(records) < max_results:
+        while True:
             if token is not None:
                 params["token"] = token
             payload = self._request_page(params)
-            page = payload.get("data") or []
-            if max_results is None:
-                records.extend(page)
-            else:
-                records.extend(page[: max_results - len(records)])
+            records.extend(payload.get("data") or [])
             token = payload.get("token")
             if token is None:
                 break
@@ -292,9 +287,11 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
         self.receipt = SemanticScholarCollectionReceipt()
         today = self.run_date or datetime.now(UTC).date()
         all_records: list[dict[str, Any]] = []
-        query_states: list[dict] = []
+        planned_queries: list[tuple[SemanticScholarQueryPlan, list[str]]] = []
         monitoring_lines = []
 
+        # Always finish pagination and every planned window. A processing cap
+        # must never make an unread API page look complete.
         for query in self.queries:
             state = s2db.load_query_state(self.conn, query)
             plan = plan_query_windows(
@@ -307,51 +304,16 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
                 backfill_interval_days=self.backfill_interval_days,
             )
             query_records: list[dict[str, Any]] = []
-            completed_end: date | None = None
-            all_windows_completed = True
-            for index, (start, end) in enumerate(plan.windows):
-                remaining = (
-                    None
-                    if self.max_results_per_query is None
-                    else self.max_results_per_query - len(query_records)
-                )
-                if remaining is not None and remaining <= 0:
-                    all_windows_completed = False
-                    break
-                page_records = self._collect_window(query, start, end, remaining)
+            for start, end in plan.windows:
+                page_records = self._collect_window(query, start, end)
                 query_records.extend(page_records)
-                completed_end = end
                 monitoring_lines.append(
                     f"Query '{query}' | {start.isoformat()}:{end.isoformat()} | "
                     f"records: {len(page_records)}"
                 )
-                if (
-                    self.max_results_per_query is not None
-                    and len(query_records) >= self.max_results_per_query
-                    and index < len(plan.windows) - 1
-                ):
-                    all_windows_completed = False
-                    break
-
             all_records.extend(query_records)
-            if all_windows_completed and plan.completed_end_date is not None:
-                query_states.append(
-                    {
-                        "query": query,
-                        "completed_end_date": plan.completed_end_date,
-                        "backfill_completed_on": plan.backfill_completed_on,
-                    }
-                )
-            elif completed_end is not None:
-                # A result cap completed only a prefix of the planned windows.
-                # Leave backfill due so a later run revisits the full range.
-                query_states.append(
-                    {
-                        "query": query,
-                        "completed_end_date": completed_end,
-                        "backfill_completed_on": None,
-                    }
-                )
+            query_paper_ids = list(self._combine_records(query_records))
+            planned_queries.append((plan, query_paper_ids))
 
         combined = self._combine_records(all_records)
         seen = s2db.get_seen_paper_ids(self.conn, combined.keys())
@@ -360,13 +322,48 @@ class SemanticScholarNewestPaperCollector(Function[Any, PaperCandidateCollection
             for paper_id, record in combined.items()
             if paper_id not in seen
         }
+
+        selected_ids: set[str] = set()
+        query_states: list[dict] = []
+        for plan, query_paper_ids in planned_queries:
+            unseen_ids = [
+                paper_id for paper_id in query_paper_ids if paper_id in new_records
+            ]
+            if self.max_results_per_query is None:
+                query_selection = unseen_ids
+            else:
+                query_selection = unseen_ids[: self.max_results_per_query]
+            selected_ids.update(query_selection)
+            backlog = len(unseen_ids) - len(query_selection)
+            if backlog:
+                # Do not write either date. The next run repeats this plan,
+                # filters IDs committed here, and processes the next backlog
+                # batch. Previous cursor and backfill dates stay intact.
+                monitoring_lines.append(
+                    f"Query '{plan.query}' | deferred by result cap: {backlog}; "
+                    "cursor unchanged"
+                )
+            elif plan.completed_end_date is not None:
+                query_states.append(
+                    {
+                        "query": plan.query,
+                        "completed_end_date": plan.completed_end_date,
+                        "backfill_completed_on": plan.backfill_completed_on,
+                    }
+                )
+
+        selected_records = {
+            paper_id: record
+            for paper_id, record in new_records.items()
+            if paper_id in selected_ids
+        }
         candidates: list[ComouratPaperCandidate] = [
             candidate
-            for record in new_records.values()
+            for record in selected_records.values()
             if (candidate := self._candidate(record)) is not None
         ]
         self.receipt = SemanticScholarCollectionReceipt(
-            paper_ids=sorted(new_records),
+            paper_ids=sorted(selected_records),
             query_states=query_states,
         )
         monitoring_lines.extend(

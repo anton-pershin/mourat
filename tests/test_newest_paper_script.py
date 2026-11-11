@@ -132,13 +132,19 @@ def _llm_factory(scripted):
 
 
 def _run_newest_sources(
-    tmp_path, monkeypatch, fail_writer=False, semantic_scholar_only=False
+    tmp_path,
+    monkeypatch,
+    fail_writer=False,
+    semantic_scholar_only=False,
+    dbfile=None,
+    query="machine_learning",
 ):
     """Run the real pipeline with mocked providers and scripted LLMs."""
-    conn, dbfile = _init_db(tmp_path)
-    conn.close()
+    if dbfile is None:
+        conn, dbfile = _init_db(tmp_path)
+        conn.close()
     output_path = (
-        f"{tmp_path}/missing/out.jsonl" if fail_writer else f"{tmp_path}/both.jsonl"
+        f"{tmp_path}/missing/out.jsonl" if fail_writer else f"{tmp_path}/{query}.jsonl"
     )
     source_override = (
         "sources=[semantic_scholar]"
@@ -157,7 +163,7 @@ def _run_newest_sources(
             "semantic_scholar_newest.backfill_days=0",
             "semantic_scholar_newest.regular_delay_seconds=0",
             "semantic_scholar_newest.backoff_seconds=0",
-            "semantic_scholar_newest.queries=[machine_learning]",
+            f"semantic_scholar_newest.queries=[{query}]",
             f"jsonl_output_path={output_path}",
         ],
     )
@@ -335,6 +341,41 @@ class TestScriptWiring:
         assert all(
             call.args[0] != "http://fake/rss" for call in fake_client.get.call_args_list
         )
+
+    def test_second_run_skips_seen_papers_and_commits_empty_output(
+        self, tmp_path, monkeypatch
+    ):
+        dbfile, _, _ = _run_newest_sources(
+            tmp_path, monkeypatch, semantic_scholar_only=True
+        )
+
+        from mourat.processors.relevance_triage import RelevanceTriageClassifier
+
+        original_run = RelevanceTriageClassifier._run
+        triage_input_sizes = []
+
+        def capture_triage_input(component, data):
+            triage_input_sizes.append(len(data.papers))
+            return original_run(component, data)
+
+        monkeypatch.setattr(RelevanceTriageClassifier, "_run", capture_triage_input)
+        _, second_output, _ = _run_newest_sources(
+            tmp_path,
+            monkeypatch,
+            semantic_scholar_only=True,
+            dbfile=dbfile,
+            query="second_query",
+        )
+
+        assert triage_input_sizes == [0]
+        assert Path(second_output).read_text(encoding="utf-8") == ""
+        from mourat.database import init_db
+        from mourat.database import semantic_scholar as s2db
+
+        conn = init_db(dbfile)
+        state = s2db.load_query_state(conn, "second_query")
+        assert state["last_completed_end_date"] == "2026-01-30"
+        conn.close()
 
     def test_downstream_failure_does_not_commit_semantic_scholar_state(
         self, tmp_path, monkeypatch
