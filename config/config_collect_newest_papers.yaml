@@ -5,6 +5,8 @@ defaults:
   - monitoring_handler: via_md_files
   - llm/caila_gpt_6_luna@scoring_llm
   - llm/caila_gpt_6_luna@authority_llm
+  - paper_deduplicator: default
+  - semantic_scholar_newest: default
   - relevance_triage: default
   - arxiv_html_affiliations: default
   - authority_influence: default
@@ -19,7 +21,12 @@ hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}
 db_path: ${user_settings.db_path}
 
-# Per-feed collector configs (R8): each entry is one arXiv RSS feed.
+# Enabled producers. Use [arxiv], [semantic_scholar], or both as below.
+sources:
+  - arxiv
+  - semantic_scholar
+
+# Per-feed collector configs: each entry is one arXiv RSS feed.
 feeds:
   cs_lg:
     _target_: mourat.collectors.arxiv.ArxivPaperCollector

@@ -16,6 +16,8 @@ SCRIPT_NAMES = sorted(
 PIPELINE_STAGES = {
     "collect_newest_papers": (
         "ArxivPaperCollector",
+        "SemanticScholarNewestPaperCollector",
+        "PaperCandidateDeduplicator",
         "RelevanceTriageClassifier",
         "ArxivHtmlAffiliationFetcher",
         "AuthorityInfluenceAssessor",
@@ -100,6 +102,19 @@ def test_newest_pipeline_does_not_use_retired_classifier_description() -> None:
     assert "BinaryPaperClassifier" not in section
     assert "ScoreBasedPaperFilter" not in section
     assert "default: 4" not in section
+
+
+def test_newest_pipeline_documents_semantic_scholar_state_and_identity() -> None:
+    section = _script_section("collect_newest_papers")
+    for text in (
+        "sources=[arxiv]",
+        "sources=[semantic_scholar]",
+        "publication date",
+        "backfill",
+        "DOI",
+        "after all downstream stages",
+    ):
+        assert text in section
 
 
 def test_readme_describes_shared_architecture_and_operation() -> None:

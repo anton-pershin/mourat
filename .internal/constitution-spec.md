@@ -75,13 +75,17 @@ collect_newest_papers.py — Newest papers
 ```mermaid
 flowchart LR
   DB[("Database")]
-  N1["Producer\nCollect arXiv papers"] --> N2["Sieve\nRelevance triage"] --> N3["Map\nFetch affiliations"] --> N4["Map\nAssess authority influence"] --> N5["Map\nResolve candidates"] --> N6["Map\nScore research relevance"] --> N7["Sieve\nFilter by score"]
+  N1["Producers\nCollect arXiv and Semantic Scholar papers"] --> N1B["Transformer\nDeduplicate paper identities"] --> N2["Sieve\nRelevance triage"] --> N3["Map\nFetch arXiv affiliations"] --> N4["Map\nAssess authority influence"] --> N5["Map\nResolve candidates"] --> N6["Map\nScore research relevance"] --> N7["Sieve\nFilter by score"]
   N7 --> NDB["Consumer\nDatabase writer"]
   N7 --> NJ["Consumer\nJSONL writer"]
+  NDB --> N8["Commit Semantic Scholar state"]
+  NJ --> N8
   DB -. "research context" .-> N2
   DB -. "research context" .-> N6
+  DB -. "collection state" .-> N1
   NDB -->|"store on request"| DB
   NJ --> NFILE[("JSONL output")]
+  N8 --> DB
 ```
 
 collect_influential_papers_from_scratch.py — Influential papers from scratch
@@ -151,9 +155,9 @@ flowchart LR
 
 - **Collection pipelines**
   - **`collect_newest_papers.py`** — orchestrator
-    - Producer: collect newest papers.
-    - Maps and sieves: triage relevance, fetch affiliations, assess authority influence, resolve candidates, score research relevance, and filter by score.
-    - Consumers: database writer and JSONL writer.
+    - Producers: collect newest papers from enabled arXiv feeds and Semantic Scholar queries.
+    - Maps and sieves: deduplicate canonical paper identities, triage relevance, fetch arXiv affiliations, assess authority influence, resolve candidates, score research relevance, and filter by score.
+    - Consumers: database writer and JSONL writer. The script commits Semantic Scholar collection state after all enabled consumers succeed.
   - **`collect_influential_papers_from_scratch.py`** — orchestrator
     - Producer: discover paper candidates.
     - Transformer: resolve papers.
@@ -180,7 +184,7 @@ flowchart LR
     - Transformer: search the database.
     - Consumer: present matching items.
 - **Shared components**
-  - **Database:** stores content items, research questions, technical challenges, research topics, and constraints. It supplies research context and supports retrieval.
+  - **Database:** stores content items, research questions, technical challenges, research topics, and constraints. It supplies research context and supports retrieval. It also stores paper-identity aliases and Semantic Scholar collection state.
   - **Pipes:** pass data in one direction between filters in each pipeline.
 - **Auxiliary scripts**
   - `calibrate_hn_stats.py`

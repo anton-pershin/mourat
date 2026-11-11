@@ -23,8 +23,9 @@
 | Influence score | An assessment from 0 to 100 of a content item's impact or authority, using the method configured for its collection workflow. |
 | Reference level | A configured raw post score used to normalize influence. Reddit uses a separate reference for each subreddit; Hacker News uses one global reference. |
 | Paper candidate | A paper proposed by a collector or discovery step, before conversion to the resolved-paper representation. |
-| Resolved paper | A paper in the common representation used for relevance scoring and output, with metadata obtained from a provider or converted from an arXiv candidate. |
+| Resolved paper | A paper in the common representation used for relevance scoring and output, with metadata obtained from a provider or converted from a collected candidate. |
 | Provenance | The names of the discovery agent or generators that produced a paper candidate, retained with the paper. |
+| Canonical paper identity | The normalized arXiv identifier or DOI used to keep one content item for a paper. ArXiv has precedence over DOI. |
 
 #### Newest papers — collect_newest_papers.py
 
@@ -34,6 +35,7 @@
 | Relevance triage | A preliminary boolean assessment of whether a paper is plausibly relevant to at least one specified research question, technical challenge, or research topic. Constraints are excluded. |
 | Author affiliation | An institution associated with an author, extracted from the paper's arXiv HTML page. |
 | Authority influence | An LLM assessment of author and institution authority, recorded as the paper's influence score. |
+| Semantic Scholar collection state | The durable query cursors and seen Semantic Scholar paper IDs used to resume collection and skip papers processed earlier. |
 
 #### Influential papers from scratch — collect_influential_papers_from_scratch.py
 

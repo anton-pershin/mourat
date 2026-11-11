@@ -1,0 +1,2 @@
+_target_: mourat.processors.paper_deduplicator.PaperCandidateDeduplicator
+_partial_: true

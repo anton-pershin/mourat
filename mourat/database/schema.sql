@@ -169,6 +169,30 @@ CREATE TABLE IF NOT EXISTS content_item_references (
     FOREIGN KEY (target_id) REFERENCES content_items(id)
 );
 
+-- Canonical paper aliases. Each provider identifier points to one content item.
+CREATE TABLE IF NOT EXISTS paper_identities (
+    identity_type TEXT NOT NULL CHECK (identity_type IN ('arxiv', 'doi')),
+    identity_value TEXT NOT NULL,
+    content_item_id TEXT NOT NULL,
+    PRIMARY KEY (identity_type, identity_value),
+    FOREIGN KEY (content_item_id) REFERENCES content_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_identities_content_item
+    ON paper_identities(content_item_id);
+
+-- Semantic Scholar publication-date collection state and idempotency ledger.
+CREATE TABLE IF NOT EXISTS semantic_scholar_collection_state (
+    query TEXT PRIMARY KEY,
+    last_completed_end_date TEXT,
+    last_backfill_completed_on TEXT
+);
+
+CREATE TABLE IF NOT EXISTS semantic_scholar_seen_papers (
+    paper_id TEXT PRIMARY KEY,
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Content item -> technical challenge junction
 CREATE TABLE IF NOT EXISTS item_technical_challenges (
     content_id TEXT NOT NULL,

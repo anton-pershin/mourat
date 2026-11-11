@@ -67,10 +67,10 @@ from the subdirectories of `config/`.
 
 Some component configurations read additional optional variables:
 
-- `SEMANTIC_SCHOLAR_API_KEY` selects authenticated Semantic Scholar access when that
-  graph client is configured.
-- `SEMANTIC_SCHOLAR_PROXY` configures a proxy for Semantic Scholar, paper discovery,
-  Reddit web enrichment, and Hacker News content fetching where applicable.
+- `SEMANTIC_SCHOLAR_API_KEY` selects authenticated Semantic Scholar access for newest-paper
+  collection and for a configured Semantic Scholar graph client.
+- `SEMANTIC_SCHOLAR_PROXY` configures a proxy for Semantic Scholar graph clients, paper
+  discovery, Reddit web enrichment, and Hacker News content fetching where applicable.
 - `ARXIV_PROXY` configures a proxy for arXiv PDF verification.
 
 The default LLM configurations use Caila. The configurations in `config/llm/` show the
@@ -121,28 +121,53 @@ provides them.
 
 ### `collect_newest_papers.py`
 
-Collects new arXiv submissions from all RSS feeds configured under `feeds`. With
+Collects papers from arXiv, Semantic Scholar, or both. The default `sources` list enables
+both producers. Use `sources=[arxiv]` for arXiv only or `sources=[semantic_scholar]`
+for Semantic Scholar only. An empty, duplicate, or unknown source selection is an error.
+
+For arXiv, the script collects new submissions from all RSS feeds under `feeds`. With
 `only_new_submissions: true`, replacements and cross-listings are excluded.
+
+For Semantic Scholar, `semantic_scholar_newest.queries` supplies one or more strict
+keyword queries. The collector uses publication date ranges, not the date when Semantic
+Scholar indexed a paper. Its default schedule uses a 30-day lag and one-day request
+strides. It also runs a 90-day backfill on the first run and every seven days. The lag,
+stride, backfill, request delays, retries, and optional result limit are configurable.
+The default null result limit follows every continuation token.
 
 **Pipeline:**
 
-`ArxivPaperCollector` → `RelevanceTriageClassifier` →
+`ArxivPaperCollector` and/or `SemanticScholarNewestPaperCollector` →
+`PaperCandidateDeduplicator` → `RelevanceTriageClassifier` →
 `ArxivHtmlAffiliationFetcher` → `AuthorityInfluenceAssessor` →
 `CandidateToResolvedConverter` → `PaperContentItemScorer` → `PaperScoreFilter` →
 `JsonlWriter` and/or `ContentItemDbWriter`.
 
+- The deduplicator compares normalized arXiv and DOI identities. The arXiv record is
+  primary when both sources find a paper. Provenance is combined. Semantic Scholar-only
+  papers must have a DOI; records without one are excluded before triage.
 - Relevance triage is a batched boolean filter over research questions, technical
   challenges, and research topics. Constraints do not participate in triage.
-- The affiliation fetcher reads arXiv HTML. The authority assessor gives an LLM-based
-  influence score from 0 to 100.
+- The affiliation fetcher reads arXiv HTML for records with an arXiv ID. Affiliations stay
+  unknown for DOI-only records. The authority assessor gives an LLM-based influence score
+  from 0 to 100.
 - The scorer gives a relevance score from 0 to 100 for each configured research
   attribute. Constraints contribute to the filtering score. At least one research
   question, technical challenge, or research topic ID must resolve.
-- The JSONL writer can optionally skip papers already in the database when
-  `jsonl_writer.skip_existing` is enabled.
+- SQLite stores a seen-paper ledger and a cursor for each Semantic Scholar query. Seen
+  papers do not repeat triage, including papers rejected earlier. The script commits this
+  state after all downstream stages and enabled writers succeed. A failed run does not
+  advance the cursor or the ledger, so a retry can process the same papers again.
+- Paper storage uses arXiv identity first, DOI second, and a title slug only when neither
+  identifier is available. Persistent aliases prevent a DOI-only row and a later arXiv
+  record from becoming two rows. The JSONL writer can skip existing papers through the
+  same identity lookup when `jsonl_writer.skip_existing` is enabled.
 
-**Configuration:** `config/config_collect_newest_papers.yaml` controls the feeds,
-research-attribute IDs, model roles, relevance threshold, and writers.
+**Configuration:** `config/config_collect_newest_papers.yaml` controls sources and feeds.
+`config/semantic_scholar_newest/default.yaml` controls Semantic Scholar queries, schedule,
+pagination, and HTTP behavior. Set `SEMANTIC_SCHOLAR_API_KEY` for authenticated access.
+The main configuration also controls research-attribute IDs, model roles, relevance
+threshold, and writers.
 
 ### `collect_influential_papers_from_scratch.py`
 

@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 import re
 
+from comourat.models import normalize_arxiv_id, normalize_doi
+
 from mourat.base import Function
-from mourat.data_models import ScoredPaperCollection
+from mourat.data_models import ResolvedPaper, ScoredPaperCollection
+from mourat.database import apply_schema
 from mourat.database import content_item as ci
 from mourat.monitoring import MonitoringHandler
 
@@ -16,19 +19,103 @@ logger = logging.getLogger(__name__)
 _ID_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
-def _content_item_id(title: str, arxiv_id: str | None = None) -> str:
-    """Derive a stable content item id for a paper (R6).
+def _normalized_doi(value: str | None) -> str | None:
+    normalized = normalize_doi(value)
+    return normalized.lower() if normalized else None
 
-    When the record carries an arXiv id, the id is derived from it (base
-    id, already version-stripped by the collector): re-runs over the same
-    paper always meet the same row regardless of title spelling drift.
-    When it does not, the existing title-slug derivation applies unchanged
-    — other content paths have no arXiv id and must keep working.
-    """
+
+def _paper_identities(paper: ResolvedPaper) -> list[tuple[str, str]]:
+    """Return normalized provider aliases in precedence order."""
+    identities = []
+    arxiv_id = normalize_arxiv_id(paper.arxiv_id)
+    doi = _normalized_doi(paper.doi)
+    if arxiv_id:
+        identities.append(("arxiv", arxiv_id))
+    if doi:
+        identities.append(("doi", doi))
+    return identities
+
+
+def _content_item_id(
+    title: str, arxiv_id: str | None = None, doi: str | None = None
+) -> str:
+    """Derive an ID by arXiv, DOI, then the legacy title fallback."""
+    arxiv_id = normalize_arxiv_id(arxiv_id)
+    doi = _normalized_doi(doi)
     if arxiv_id:
         return f"paper_arxiv-{arxiv_id}"
+    if doi:
+        return f"paper_doi-{doi}"
     slug = _ID_NON_ALNUM.sub("_", title.strip().lower()).strip("_")
     return f"paper_{slug}"
+
+
+def _derived_content_item_ids(paper: ResolvedPaper) -> list[str]:
+    """Return current and legacy IDs that can identify an existing row."""
+    ids = []
+    for arxiv_id, doi in (
+        (paper.arxiv_id, paper.doi),
+        (paper.arxiv_id, None),
+        (None, paper.doi),
+        (None, None),
+    ):
+        item_id = _content_item_id(paper.title, arxiv_id, doi)
+        if item_id not in ids:
+            ids.append(item_id)
+    return ids
+
+
+def _has_identity_table(conn) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'paper_identities'"
+        ).fetchone()
+        is not None
+    )
+
+
+def _existing_content_item_ids(conn, paper: ResolvedPaper) -> list[str]:
+    """Find existing rows through current IDs, legacy IDs, and aliases."""
+    existing = []
+
+    def add(item_id: str | None) -> None:
+        if item_id and item_id not in existing:
+            if ci.get_content_item(conn, item_id) is not None:
+                existing.append(item_id)
+
+    for item_id in _derived_content_item_ids(paper):
+        add(item_id)
+    if _has_identity_table(conn):
+        for identity_type, identity_value in _paper_identities(paper):
+            rows = conn.execute(
+                "SELECT content_item_id FROM paper_identities "
+                "WHERE identity_type = ? AND identity_value = ?",
+                (identity_type, identity_value),
+            ).fetchall()
+            for row in rows:
+                add(row["content_item_id"])
+    return existing
+
+
+def _existing_content_item_id(conn, paper: ResolvedPaper) -> str | None:
+    """Read-only identity lookup shared with the JSONL writer."""
+    existing = _existing_content_item_ids(conn, paper)
+    return existing[0] if existing else None
+
+
+def _reconcile_content_item_id(conn, paper: ResolvedPaper) -> str:
+    """Make the preferred ID canonical and merge any legacy duplicates."""
+    canonical = _content_item_id(paper.title, paper.arxiv_id, paper.doi)
+    existing = _existing_content_item_ids(conn, paper)
+    if not existing:
+        return canonical
+    if canonical not in existing:
+        ci.rekey_content_item(conn, existing[0], canonical)
+    for duplicate_id in existing:
+        if duplicate_id != canonical and ci.get_content_item(conn, duplicate_id):
+            ci.merge_content_items(conn, duplicate_id, canonical)
+    return canonical
 
 
 class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]):
@@ -52,6 +139,7 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
         platform_id: str = "web",
         influence_metric_id: str = "citations",
     ) -> None:
+        apply_schema(conn)
         self.conn = conn
         self.source_type_id = source_type_id
         self.platform_id = platform_id
@@ -81,7 +169,7 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
 
     def _write_item(self, sp) -> str:
         """Write one scored paper; returns 'created', 'updated' or 'failed'."""
-        item_id = _content_item_id(sp.paper.title, getattr(sp.paper, "arxiv_id", None))
+        item_id = _reconcile_content_item_id(self.conn, sp.paper)
         authors = "; ".join(sp.paper.authors)
         url = sp.paper.url or None
 
@@ -126,6 +214,15 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
 
         # Refresh relevance links: remove stale ones, then insert current.
         self._refresh_links(item_id, sp)
+        for identity_type, identity_value in _paper_identities(sp.paper):
+            self.conn.execute(
+                "INSERT INTO paper_identities "
+                "(identity_type, identity_value, content_item_id) VALUES (?, ?, ?) "
+                "ON CONFLICT(identity_type, identity_value) DO UPDATE SET "
+                "content_item_id = excluded.content_item_id",
+                (identity_type, identity_value, item_id),
+            )
+        self.conn.commit()
         return "updated" if existing is not None else "created"
 
     def _refresh_links(self, item_id: str, sp) -> None:

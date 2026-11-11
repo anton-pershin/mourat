@@ -1,0 +1,25 @@
+_target_: mourat.collectors.semantic_scholar_newest.SemanticScholarNewestPaperCollector
+_partial_: true
+api_url: https://api.semanticscholar.org/graph/v1
+api_key: ${oc.env:SEMANTIC_SCHOLAR_API_KEY,null}
+
+# Semantic Scholar strict keyword queries. Each query has its own date cursor.
+queries:
+  - large language model
+
+# The normal target date is UTC run date minus this lag.
+publication_lag_days: 30
+stride_days: 1
+
+# Revisit this publication window on the first run and at this interval.
+backfill_days: 90
+backfill_interval_days: 7
+
+# Null follows every continuation token. A positive value is an explicit cap.
+max_results_per_query: null
+max_retries: 4
+backoff_seconds: 2.0
+regular_delay_seconds: 1.0
+
+# Optional ISO date for a controlled manual run or a test. Null uses the UTC date.
+run_date: null

@@ -92,6 +92,95 @@ def list_content_items(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+_PAPER_LINK_TABLES = (
+    "item_technical_challenges",
+    "item_research_questions",
+    "item_research_topics",
+    "item_constraints",
+)
+
+
+def rekey_content_item(conn: sqlite3.Connection, old_id: str, new_id: str) -> None:
+    """Change a content-item ID while preserving all paper relations.
+
+    If the target already exists, the two rows are merged instead. Foreign-key
+    checks are deferred until every reference has been moved.
+    """
+    if old_id == new_id:
+        return
+    if get_content_item(conn, new_id) is not None:
+        merge_content_items(conn, old_id, new_id)
+        return
+
+    conn.execute("PRAGMA defer_foreign_keys = ON")
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE content_items SET id = ? WHERE id = ?", (new_id, old_id)
+            )
+            for table in _PAPER_LINK_TABLES:
+                conn.execute(
+                    f"UPDATE {table} SET content_id = ? WHERE content_id = ?",
+                    (new_id, old_id),
+                )
+            conn.execute(
+                "UPDATE content_item_references SET source_id = ? WHERE source_id = ?",
+                (new_id, old_id),
+            )
+            conn.execute(
+                "UPDATE content_item_references SET target_id = ? WHERE target_id = ?",
+                (new_id, old_id),
+            )
+            conn.execute(
+                "UPDATE paper_identities SET content_item_id = ? "
+                "WHERE content_item_id = ?",
+                (new_id, old_id),
+            )
+    finally:
+        conn.execute("PRAGMA defer_foreign_keys = OFF")
+
+
+def merge_content_items(
+    conn: sqlite3.Connection, source_id: str, target_id: str
+) -> None:
+    """Merge a duplicate paper row into the canonical target row."""
+    if source_id == target_id:
+        return
+    conn.execute("PRAGMA defer_foreign_keys = ON")
+    try:
+        with conn:
+            for table in _PAPER_LINK_TABLES:
+                # Keep the target score when both rows link the same attribute.
+                conn.execute(
+                    f"UPDATE OR IGNORE {table} SET content_id = ? "
+                    "WHERE content_id = ?",
+                    (target_id, source_id),
+                )
+                conn.execute(f"DELETE FROM {table} WHERE content_id = ?", (source_id,))
+            for column in ("source_id", "target_id"):
+                conn.execute(
+                    "UPDATE OR IGNORE content_item_references "
+                    f"SET {column} = ? WHERE {column} = ?",
+                    (target_id, source_id),
+                )
+                conn.execute(
+                    f"DELETE FROM content_item_references WHERE {column} = ?",
+                    (source_id,),
+                )
+            conn.execute(
+                "UPDATE OR IGNORE paper_identities SET content_item_id = ? "
+                "WHERE content_item_id = ?",
+                (target_id, source_id),
+            )
+            conn.execute(
+                "DELETE FROM paper_identities WHERE content_item_id = ?",
+                (source_id,),
+            )
+            conn.execute("DELETE FROM content_items WHERE id = ?", (source_id,))
+    finally:
+        conn.execute("PRAGMA defer_foreign_keys = OFF")
+
+
 # -- Source types --
 
 

@@ -141,6 +141,7 @@ flowchart LR
 | `mourat/collectors/semantic_scholar_newest.py` | New: date planning, bulk search, candidate conversion, and collection receipt |
 | `mourat/database/semantic_scholar.py` | New: seen-paper lookup and transactional collection-state commits |
 | `mourat/database/schema.sql` | Modified: Semantic Scholar state and paper-identity tables |
+| `mourat/database/content_item.py` | Modified: rekey and merge existing paper rows while preserving relations |
 | `mourat/processors/paper_deduplicator.py` | New: DOI exclusion and cross-source deduplication |
 | `mourat/processors/candidate_converter.py` | Modified: preserve DOI |
 | `mourat/writers/db_writer.py` | Modified: DOI identity, aliases, and existing-row reconciliation |
@@ -148,8 +149,9 @@ flowchart LR
 | `mourat/scripts/collect_newest_papers.py` | Modified: source selection, dedup stage, and deferred state commit |
 | `config/config_collect_newest_papers.yaml` | Modified: source list and Semantic Scholar component defaults |
 | `config/semantic_scholar_newest/default.yaml` | New: query, schedule, pagination, retry, and API settings |
+| `config/paper_deduplicator/default.yaml` | New: canonical-identity deduplicator target |
 | `tests/test_newest_semantic_scholar.py` | New: AC1–AC5 feature tests |
-| `tests/test_newest_paper_script.py`, `tests/test_paper_collection.py`, `tests/test_readme.py` | Modified: source-mode fixtures, identity regressions, and documentation order |
+| `tests/test_newest_paper_script.py`, `tests/test_readme.py` | Modified: source-mode fixtures and documentation order |
 | `README.md` | Modified: Semantic Scholar operation and configuration |
 | `.internal/constitution-spec.md` | Modified: source-neutral producer and dedup stage |
 | `.internal/terminology.md` | Modified: source and identity terms used by this spec |
