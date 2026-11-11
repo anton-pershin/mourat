@@ -82,7 +82,7 @@ def test_hn_article_contract_dependencies_are_pinned():
     ]
     expected_comourat = (
         "comourat @ git+https://github.com/anton-pershin/comourat.git@"
-        "d82a29f87b858024615f8f56c4059c11b043bdd9"
+        "f15a0375889464d44f8ca93991fc32dd9b43a2a5"
     )
     for dependencies in (project_dependencies, requirement_dependencies):
         assert expected_comourat in dependencies

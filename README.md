@@ -44,7 +44,7 @@ Python 3.12 or later is required.
 
 Both `requirements.txt` and `pyproject.toml` require `pydantic-ai` 2.64.0 or later.
 They also pin Comourat to commit
-`d82a29f87b858024615f8f56c4059c11b043bdd9`. Keep this full commit in both dependency
+`f15a0375889464d44f8ca93991fc32dd9b43a2a5`. Keep this full commit in both dependency
 declarations. If you select a newer Comourat revision, review its contracts and run the
 complete test suite.
 
@@ -71,7 +71,17 @@ Some component configurations read additional optional variables:
   graph client is configured.
 - `SEMANTIC_SCHOLAR_PROXY` configures a proxy for Semantic Scholar, paper discovery,
   Reddit web enrichment, and Hacker News content fetching where applicable.
-- `ARXIV_PROXY` configures a proxy for arXiv PDF verification.
+- `ARXIV_PROXY` configures an explicit proxy for arXiv PDF verification. The protected
+  arXiv transport does not inherit generic `HTTP_PROXY` or `HTTPS_PROXY` variables. If
+  the deployment network requires a proxy, set `ARXIV_PROXY`; generic variables alone
+  have no effect.
+
+The arXiv client configuration has two 120-second limits. `timeout_seconds` caps each
+connection attempt and response read within the remaining operation time.
+`overall_timeout_seconds` is a hard deadline for each title lookup or title search. DNS,
+connection setup, TLS, redirects, response transfer, retries, delays, and response parsing
+all consume this budget. A deadline or DNS failure gives the affected paper an empty URL
+with reason `api_error`. Verification then continues with later papers.
 
 The default LLM configurations use Caila. The configurations in `config/llm/` show the
 available alternatives, including an OpenAI-compatible local endpoint. Select or edit

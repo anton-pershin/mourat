@@ -9,7 +9,7 @@ This spec implements GitHub issue #20. It adapts Mourat to the arXiv operation d
 - **R3 — Reviewed dependency selection.** `pyproject.toml` and `requirements.txt` must select Comourat commit `f15a0375889464d44f8ca93991fc32dd9b43a2a5`. This revision advances the revision selected by issues #18 and #19 and retains their enrichment and article contracts. Dependency tests and the README must select the same revision.
 - **R4 — Explicit deployment configuration.** The arXiv Hydra configuration must keep `proxy: ${oc.env:ARXIV_PROXY,null}` and set `overall_timeout_seconds: 120.0` explicitly. The existing `timeout_seconds: 120.0` setting must remain. Both influential-paper pipelines must compose these values. The README must state that generic `HTTP_PROXY` and `HTTPS_PROXY` variables do not configure the protected arXiv transport. It must explain that the overall deadline includes DNS, connection setup, TLS, redirects, response transfer, retries, delays, and response parsing.
 - **R5 — Per-paper failure containment.** Comourat `FetchDeadlineExceeded` and `FetchResolutionError` exceptions must produce `api_error` for the affected paper. Verification must continue with later papers and retain the existing monitoring counts. Mourat must use the existing Comourat verification core for this behavior.
-- **R6 — Selected-revision verification.** Focused arXiv tests, the complete Mourat suite, and quality checks must run against the selected Comourat revision. Tests must use controlled doubles and must not require live provider access.
+- **R6 — Selected-revision verification.** Focused arXiv tests, the complete Mourat suite, and quality checks must run against the selected Comourat revision with `pydantic-ai` 2.64.0 or later. Tests must use controlled doubles and must not require live provider access.
 
 Expected behavior variants:
 
@@ -77,13 +77,13 @@ Mourat production Python code remains unchanged. Comourat owns network controls 
 
 #### 3.3 Todo list
 
-1. [ ] Write the protected-transport, Hydra, failure-containment, and dependency tests.
-2. [ ] Run the focused tests against the selected Comourat revision and confirm the expected failures.
-3. [ ] Update the two default-session tests without changing their configured values.
-4. [ ] Configure and document the explicit overall deadline and proxy behavior.
-5. [ ] Advance the reviewed Comourat revision and its dependency assertions.
-6. [ ] Run the focused tests, complete suite, formatting checks, pylint, and mypy.
-7. [ ] Commit and push the assigned branch, then open one pull request for issue #20.
+1. [x] Write the protected-transport, Hydra, failure-containment, and dependency tests.
+2. [x] Run the focused tests against the selected Comourat revision and confirm the expected failures.
+3. [x] Update the two default-session tests without changing their configured values.
+4. [x] Configure and document the explicit overall deadline and proxy behavior.
+5. [x] Advance the reviewed Comourat revision and its dependency assertions.
+6. [x] Run the focused tests, complete suite, formatting checks, pylint, and mypy.
+7. [x] Commit and push the assigned branch, then open one pull request for issue #20.
 
 #### 3.4 Modification summary
 

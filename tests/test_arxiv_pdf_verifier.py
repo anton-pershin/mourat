@@ -2,6 +2,9 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+from comourat.fetch import FetchDeadlineExceeded, FetchResolutionError
+
 from mourat.data_models import ResolvedPaper, ResolvedPaperCollection
 from mourat.monitoring import MonitoringHandler
 from mourat.processors.arxiv_pdf_verifier import ArxivPdfVerifier
@@ -110,19 +113,31 @@ class TestApiErrorContainment:
         assert all(p.url_absent_reason == "api_error" for p in result.papers)
         assert "api_error" in monitoring
 
-    def test_one_failing_paper_does_not_block_the_rest(self):
+    @pytest.mark.parametrize(
+        "error",
+        [
+            TimeoutError("read timed out"),
+            FetchDeadlineExceeded("overall fetch deadline exceeded"),
+            FetchResolutionError("controlled DNS failure"),
+        ],
+        ids=["timeout", "deadline", "dns"],
+    )
+    def test_one_failing_paper_does_not_block_the_rest(self, error):
         arxiv = MagicMock()
         arxiv.search_by_title.side_effect = [
-            TimeoutError("read timed out"),
+            error,
             ("1706.03762", "Attention Is All You Need"),
         ]
         verifier = _make_verifier(arxiv=arxiv)
         result, monitoring = verifier._run(
             ResolvedPaperCollection(papers=[_make_paper(title="Doomed"), _make_paper()])
         )
+        assert result.papers[0].url == ""
         assert result.papers[0].url_absent_reason == "api_error"
         assert result.papers[1].url == "https://arxiv.org/pdf/1706.03762"
-        assert "verified: 1" in monitoring
+        assert arxiv.search_by_title.call_count == 2
+        assert "Papers in: 2, verified: 1, url absent: 1" in monitoring
+        assert "'api_error': 1" in monitoring
 
 
 class TestRunBehaviour:

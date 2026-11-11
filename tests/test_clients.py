@@ -5,10 +5,14 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
-
 from comourat.clients.arxiv import ArxivClient
 from comourat.clients.openalex import DEFAULT_SELECT_FIELDS, OpenAlexClient
-from comourat.clients.paper_graph import PaperIdentity, normalize_arxiv_id, normalize_doi
+from comourat.clients.paper_graph import (
+    PaperIdentity,
+    normalize_arxiv_id,
+    normalize_doi,
+)
+from comourat.fetch import SafeHttpClient
 
 
 def _make_client(http_client: MagicMock, **kwargs) -> OpenAlexClient:
@@ -375,9 +379,10 @@ class TestGetTitleById:
 class TestArxivDefaultSession:
     def test_default_session_carries_user_agent_header(self):
         client = ArxivClient(user_agent="mourat-test/0.1 (mailto:t@e.com)")
-        assert client._session is not None
+        assert isinstance(client._safe_client, SafeHttpClient)
         assert (
-            client._session.headers["User-Agent"] == "mourat-test/0.1 (mailto:t@e.com)"
+            client._safe_client.session.headers["User-Agent"]
+            == "mourat-test/0.1 (mailto:t@e.com)"
         )
 
     def test_default_session_configures_proxy(self):
@@ -385,11 +390,31 @@ class TestArxivDefaultSession:
             user_agent="mourat-test/0.1 (mailto:t@e.com)",
             proxy="socks5h://user:pass@example:1080",
         )
-        assert client._session is not None
-        assert client._session.proxies == {
+        assert isinstance(client._safe_client, SafeHttpClient)
+        assert client._safe_client.session.proxies == {
             "http": "socks5h://user:pass@example:1080",
             "https": "socks5h://user:pass@example:1080",
         }
+
+    def test_default_session_enforces_configured_deadlines(self):
+        client = ArxivClient(
+            user_agent="mourat-test/0.1 (mailto:t@e.com)",
+            timeout_seconds=12.0,
+            overall_timeout_seconds=34.0,
+        )
+        assert isinstance(client._safe_client, SafeHttpClient)
+        policy = client._safe_client.policy
+        assert policy.connection_timeout == 12.0
+        assert policy.read_timeout == 12.0
+        assert policy.overall_timeout == 34.0
+
+    def test_default_session_ignores_generic_environment_proxies(self, monkeypatch):
+        monkeypatch.setenv("HTTP_PROXY", "http://generic-http.example:8080")
+        monkeypatch.setenv("HTTPS_PROXY", "http://generic-https.example:8080")
+        client = ArxivClient(user_agent="mourat-test/0.1 (mailto:t@e.com)")
+        assert isinstance(client._safe_client, SafeHttpClient)
+        assert client._safe_client.session.trust_env is False
+        assert client._safe_client.session.proxies == {}
 
 
 class TestSearchByTitle:

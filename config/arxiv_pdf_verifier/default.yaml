@@ -4,7 +4,10 @@ title_similarity_threshold: 0.9
 arxiv_client:
   _target_: comourat.clients.arxiv.ArxivClient
   user_agent: ${metadata_api_user_agent}
-  timeout_seconds: 120.0
+  timeout_seconds: 120.0  # cap each connection attempt and response read
+  # Hard deadline for one operation, including DNS, transfers, retries, and delays.
+  overall_timeout_seconds: 120.0
   max_retries: 8
   regular_delay_seconds: 3.0  # arXiv politeness: ~1 request per 3s
+  # The protected transport ignores generic environment proxies. Set this explicitly.
   proxy: ${oc.env:ARXIV_PROXY,null}
