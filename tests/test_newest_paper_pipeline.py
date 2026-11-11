@@ -572,6 +572,7 @@ class TestCandidateToResolvedConverter:
         handler = _make_monitoring_handler()
         conv = CandidateToResolvedConverter(handler)
         coll = _make_collection(2)
+        coll.papers[0].doi = "https://doi.org/10.1234/example"
         result = conv(coll, "t")
         assert len(result.papers) == 2
         first = result.papers[0]
@@ -579,7 +580,8 @@ class TestCandidateToResolvedConverter:
         assert first.abstract == "Abstract of paper A"  # description -> abstract
         assert first.url == "https://arxiv.org/abs/2401.00000"
         assert first.publication_date == "2024-01-01"
-        assert first.arxiv_id == "2401.00000"  # in-flight, never persisted
+        assert first.arxiv_id == "2401.00000"  # separate from content-item columns
+        assert first.doi == "https://doi.org/10.1234/example"
         assert first.influence_score is None  # assessor fills it before this stage
         assert "Converted 2" in handler.calls[-1][1]
 

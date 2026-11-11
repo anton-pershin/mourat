@@ -3,32 +3,28 @@
 from __future__ import annotations
 
 import logging
-import re
 
 from mourat.base import Function
 from mourat.data_models import ScoredPaperCollection
+from mourat.database import apply_schema
 from mourat.database import content_item as ci
+from mourat.database.paper_identity import (
+    paper_content_item_id,
+    register_paper_aliases,
+    resolve_paper_content_item_id,
+)
 from mourat.monitoring import MonitoringHandler
 
 logger = logging.getLogger(__name__)
 
-# Valid id prefixes for content_items.id, derived from the normalised title.
-_ID_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
-
-def _content_item_id(title: str, arxiv_id: str | None = None) -> str:
-    """Derive a stable content item id for a paper (R6).
-
-    When the record carries an arXiv id, the id is derived from it (base
-    id, already version-stripped by the collector): re-runs over the same
-    paper always meet the same row regardless of title spelling drift.
-    When it does not, the existing title-slug derivation applies unchanged
-    — other content paths have no arXiv id and must keep working.
-    """
-    if arxiv_id:
-        return f"paper_arxiv-{arxiv_id}"
-    slug = _ID_NON_ALNUM.sub("_", title.strip().lower()).strip("_")
-    return f"paper_{slug}"
+def _content_item_id(
+    title: str,
+    arxiv_id: str | None = None,
+    doi: str | None = None,
+) -> str:
+    """Derive a stable paper ID with arXiv, DOI, then title precedence."""
+    return paper_content_item_id(title=title, arxiv_id=arxiv_id, doi=doi)
 
 
 class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]):
@@ -39,9 +35,8 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
 
     Upserts on the derived content item id: the first run creates the
     content item and its relevance links; a re-run refreshes the relevance
-    links of the already-stored paper instead of skipping it (FR4). The
-    influence score is left unset — no influence value is computed on this
-    path, and none is used to filter papers here.
+    links of the already-stored paper instead of skipping it (FR4). Canonical
+    arXiv and DOI aliases join runs, and arXiv metadata remains primary.
     """
 
     def __init__(
@@ -80,8 +75,22 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
                 logger.debug("reference row already exists: %s", args[1])
 
     def _write_item(self, sp) -> str:
-        """Write one scored paper; returns 'created', 'updated' or 'failed'."""
-        item_id = _content_item_id(sp.paper.title, getattr(sp.paper, "arxiv_id", None))
+        """Write one scored paper and return its outcome."""
+        arxiv_id = getattr(sp.paper, "arxiv_id", None)
+        doi = getattr(sp.paper, "doi", None)
+        resolution = resolve_paper_content_item_id(
+            self.conn,
+            title=sp.paper.title,
+            arxiv_id=arxiv_id,
+            doi=doi,
+        )
+        if resolution.preserve_existing:
+            logger.info(
+                "kept arXiv-primary metadata for paper '%s'; skipped DOI-only update",
+                sp.paper.title,
+            )
+            return "skipped"
+        item_id = resolution.content_item_id
         authors = "; ".join(sp.paper.authors)
         url = sp.paper.url or None
 
@@ -126,6 +135,12 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
 
         # Refresh relevance links: remove stale ones, then insert current.
         self._refresh_links(item_id, sp)
+        register_paper_aliases(
+            self.conn,
+            content_item_id=item_id,
+            arxiv_id=arxiv_id,
+            doi=doi,
+        )
         return "updated" if existing is not None else "created"
 
     def _refresh_links(self, item_id: str, sp) -> None:
@@ -188,9 +203,10 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
                 )
 
     def _run(self, data: ScoredPaperCollection) -> tuple[ScoredPaperCollection, str]:
+        apply_schema(self.conn)
         self._ensure_reference_rows()
 
-        counts = {"created": 0, "updated": 0, "failed": 0}
+        counts = {"created": 0, "updated": 0, "skipped": 0, "failed": 0}
         monitoring_lines = []
 
         for sp in data.papers:
@@ -204,7 +220,8 @@ class ContentItemDbWriter(Function[ScoredPaperCollection, ScoredPaperCollection]
 
         lines = [
             f"Papers in: {len(data.papers)}, created: {counts['created']}, "
-            f"updated: {counts['updated']}, failed: {counts['failed']}"
+            f"updated: {counts['updated']}, skipped: {counts['skipped']}, "
+            f"failed: {counts['failed']}"
         ]
         lines.extend(monitoring_lines)
         return data, "\n".join(lines)

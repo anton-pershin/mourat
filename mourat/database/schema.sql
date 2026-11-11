@@ -160,6 +160,23 @@ CREATE TABLE IF NOT EXISTS content_items (
     FOREIGN KEY (influence_metric_id) REFERENCES influence_metrics(id)
 );
 
+-- Canonical paper aliases and newest-paper collection ledger
+CREATE TABLE IF NOT EXISTS paper_identities (
+    identity_type TEXT NOT NULL CHECK (identity_type IN ('arxiv', 'doi')),
+    identity_value TEXT NOT NULL,
+    content_item_id TEXT NOT NULL,
+    PRIMARY KEY (identity_type, identity_value),
+    FOREIGN KEY (content_item_id) REFERENCES content_items(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_identities_content_item
+    ON paper_identities(content_item_id);
+
+CREATE TABLE IF NOT EXISTS semantic_scholar_collection_ledger (
+    paper_id TEXT PRIMARY KEY,
+    processed_at TEXT NOT NULL
+);
+
 -- Content item references (self-referencing)
 CREATE TABLE IF NOT EXISTS content_item_references (
     source_id TEXT NOT NULL,

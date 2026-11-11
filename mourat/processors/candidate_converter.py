@@ -10,7 +10,8 @@ onto a ResolvedPaper:
 - publication_date -> publication_date (already ISO on the candidate)
 - influence_score -> influence_score (option (b): one field, measure named
   by the writer's influence_metric_id)
-- arxiv_id -> arxiv_id (in-flight; never persisted)
+- arxiv_id and doi -> canonical identity fields (stored separately from content
+  items)
 - resolution_status stays at its default: a lineage artefact, meaningless
   on this path (no resolver ran).
 """
@@ -42,6 +43,7 @@ class CandidateToResolvedConverter(
                 url=p.urls_seen[0] if p.urls_seen else "",
                 provenance=list(p.provenance),
                 arxiv_id=p.arxiv_id,
+                doi=p.doi,
                 influence_score=p.influence_score,
             )
             for p in data.papers

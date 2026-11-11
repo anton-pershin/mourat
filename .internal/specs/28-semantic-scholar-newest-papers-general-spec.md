@@ -124,16 +124,16 @@ The normal run queries one delayed date. `backfill_days` adds an earlier rolling
 
 #### 6.1 Todo list
 
-1. [ ] Write focused collector, window, merge, ledger, writer, JSONL, and orchestration tests.
-2. [ ] Run the focused tests and confirm that the new tests fail before implementation.
-3. [ ] Add the newest Semantic Scholar collector and its Hydra component configuration.
-4. [ ] Add source selection, candidate merge, and DOI-preserving conversion.
-5. [ ] Add the provider ledger and canonical alias schema and database operations.
-6. [ ] Extend both paper writers with DOI-aware identity and cross-run deduplication.
-7. [ ] Rewire the newest-paper script and retain the existing downstream stages.
-8. [ ] Update the README, constitution design, and terminology.
-9. [ ] Run focused tests, the complete suite, Black, isort, pylint, and mypy.
-10. [ ] Review the final spec against the implementation and commit all changes on the assigned branch.
+1. [x] Write focused collector, window, merge, ledger, writer, JSONL, and orchestration tests.
+2. [x] Run the focused tests and confirm that the new tests fail before implementation.
+3. [x] Add the newest Semantic Scholar collector and its Hydra component configuration.
+4. [x] Add source selection, candidate merge, and DOI-preserving conversion.
+5. [x] Add the provider ledger and canonical alias schema and database operations.
+6. [x] Extend both paper writers with DOI-aware identity and cross-run deduplication.
+7. [x] Rewire the newest-paper script and retain the existing downstream stages.
+8. [x] Update the README, constitution design, and terminology.
+9. [x] Run focused tests, the complete suite, Black, isort, pylint, and mypy.
+10. [x] Review the final spec against the implementation and commit all changes on the assigned branch.
 11. [ ] Push the assigned branch and open one pull request for issue #28.
 
 #### 6.2 Modification summary

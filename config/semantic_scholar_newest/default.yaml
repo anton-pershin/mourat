@@ -1,0 +1,29 @@
+_target_: mourat.collectors.semantic_scholar_newest.SemanticScholarNewestPaperCollector
+_partial_: true  # expect monitoring_handler and http_client at runtime
+
+api_url: https://api.semanticscholar.org/graph/v1
+api_key: ${oc.env:SEMANTIC_SCHOLAR_API_KEY,null}
+proxy: ${oc.env:SEMANTIC_SCHOLAR_PROXY,null}
+timeout_seconds: 30.0
+max_retries: 8
+backoff_seconds: 2.0
+regular_delay_seconds: 4.0
+jitter_seconds: 1.0
+
+# Configure one bulk-search query per research area.
+queries:
+  - "large language model"
+  - "wireless communication"
+  - "wireless network"
+  - "mobile network"
+
+# Normal daily run: one publication date, delayed by 30 days.
+# Increase backfill_days to retry earlier dates. reference_date supports a
+# controlled rerun of one UTC day; null uses the current UTC date.
+lag_days: 30
+stride_days: 1
+backfill_days: 0
+reference_date: null
+
+# Null follows continuation tokens until Semantic Scholar has no more results.
+max_results_per_query: null

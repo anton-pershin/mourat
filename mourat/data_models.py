@@ -1,12 +1,12 @@
 import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, NonNegativeInt
-
 from comourat.models import (
     HNPostCollection,
     HNPostInfo,
-    PaperCandidate as _ComouratPaperCandidate,
+)
+from comourat.models import PaperCandidate as _ComouratPaperCandidate
+from comourat.models import (
     PaperCandidateCollection,
     PaperIdentity,
     PaperInfo,
@@ -16,6 +16,7 @@ from comourat.models import (
     RedditPostCollection,
     RedditPostInfo,
 )
+from pydantic import BaseModel, Field, NonNegativeInt
 
 
 class ScoredPaperInfo(BaseModel):
@@ -303,6 +304,13 @@ class PaperCandidate(_ComouratPaperCandidate):
             "or 'replace-cross'); monitoring only, never persisted"
         ),
     )
+    semantic_scholar_id: str | None = Field(
+        default=None,
+        description=(
+            "In-flight Semantic Scholar provider paper ID used by the newest-paper "
+            "collection ledger; never persisted as a content-item attribute"
+        ),
+    )
 
 
 class ScoredHNPost(BaseModel):
@@ -326,8 +334,9 @@ class ResolvedPaper(BaseModel):
     """A candidate paper resolved to canonical metadata, per spec section 5.3.
 
     Content-item attributes (what the writers persist) come first; everything
-    else is in-flight only — identifiers, influence fields, resolution status
-    and the url-absence reason never reach the database.
+    else is in-flight only. Identifiers have separate alias rows, not columns
+    on the content item. Influence fields, resolution status, and URL-absence
+    reasons are not persisted.
     """
 
     # -- content item attributes --
