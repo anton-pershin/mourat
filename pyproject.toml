@@ -19,8 +19,8 @@ dependencies = [
   "trafilatura",
   "pydantic",
   "pydantic-ai >= 2.64.0",
-  # Reviewed enrichment, article, and arXiv deadline contracts from PRs #12, #13, #17.
-  "comourat @ git+https://github.com/anton-pershin/comourat.git@f15a0375889464d44f8ca93991fc32dd9b43a2a5"
+  # Track comourat HEAD: installs use the latest revision and are not reproducible.
+  "comourat @ git+https://github.com/anton-pershin/comourat.git"
 ]
 
 [build-system]
