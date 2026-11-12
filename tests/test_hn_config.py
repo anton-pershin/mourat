@@ -70,8 +70,8 @@ def test_calibration_config_keys():
         assert key in cfg, key
 
 
-def test_hn_article_contract_dependencies_are_pinned():
-    # Spec 24 T8: runtime installation selects the same reviewed contract.
+def test_hn_article_contract_dependencies_track_comourat_head():
+    # Both runtime dependency declarations select the current Comourat HEAD.
     project_root = Path(__file__).resolve().parent.parent
     with (project_root / "pyproject.toml").open("rb") as stream:
         project_dependencies = tomllib.load(stream)["project"]["dependencies"]
@@ -80,10 +80,7 @@ def test_hn_article_contract_dependencies_are_pinned():
         for line in (project_root / "requirements.txt").read_text().splitlines()
         if line.split("#", 1)[0].strip()
     ]
-    expected_comourat = (
-        "comourat @ git+https://github.com/anton-pershin/comourat.git@"
-        "f15a0375889464d44f8ca93991fc32dd9b43a2a5"
-    )
+    expected_comourat = "comourat @ git+https://github.com/anton-pershin/comourat.git"
     for dependencies in (project_dependencies, requirement_dependencies):
         assert expected_comourat in dependencies
         assert "pydantic-ai >= 2.64.0" in dependencies

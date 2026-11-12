@@ -43,10 +43,9 @@ Python 3.12 or later is required.
    ```
 
 Both `requirements.txt` and `pyproject.toml` require `pydantic-ai` 2.64.0 or later.
-They also pin Comourat to commit
-`f15a0375889464d44f8ca93991fc32dd9b43a2a5`. Keep this full commit in both dependency
-declarations. If you select a newer Comourat revision, review its contracts and run the
-complete test suite.
+They track the HEAD of the Comourat default branch and do not pin a commit. Fresh
+installations use the current Comourat revision and are not reproducible. When you use
+a new Comourat revision, review its contracts and run the complete test suite.
 
 ## Configuration and outputs
 

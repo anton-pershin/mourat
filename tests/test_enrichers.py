@@ -205,7 +205,7 @@ class TestWebEnricherFailures:
 
 
 class TestEnrichmentDependencies:
-    def test_compatible_versions_and_reviewed_comourat_commit_are_explicit(self):
+    def test_compatible_versions_and_comourat_head_tracking_are_explicit(self):
         project_root = Path(__file__).resolve().parent.parent
         with (project_root / "pyproject.toml").open("rb") as stream:
             project_dependencies = tomllib.load(stream)["project"]["dependencies"]
@@ -227,9 +227,6 @@ class TestEnrichmentDependencies:
         ):
             assert "pydantic-ai >= 2.64.0" in dependencies
 
-        comourat = (
-            "comourat @ git+https://github.com/anton-pershin/comourat.git@"
-            "f15a0375889464d44f8ca93991fc32dd9b43a2a5"
-        )
+        comourat = "comourat @ git+https://github.com/anton-pershin/comourat.git"
         assert comourat in project_dependencies
         assert comourat in runtime_requirements

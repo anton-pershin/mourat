@@ -10,4 +10,5 @@ trafilatura
 
 pydantic
 pydantic-ai >= 2.64.0
+# Track comourat HEAD: installs use the latest revision and are not reproducible.
 comourat @ git+https://github.com/anton-pershin/comourat.git
