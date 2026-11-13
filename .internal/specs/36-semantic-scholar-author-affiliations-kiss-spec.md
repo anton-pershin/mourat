@@ -1,6 +1,6 @@
 ## Semantic Scholar author affiliations
 
-This spec implements GitHub issue #36.
+This spec implements GitHub issue #36. It replaces the DOI-only unknown-affiliation rule in spec 28 FR9. The other requirements in spec 28 remain unchanged.
 
 ### 1. Requirement analysis
 
@@ -30,7 +30,7 @@ Expected behavior variants:
 - **T4 (R2, R3, R4, B1, B2, B3, B4, B6) — Affiliation-stage selection.** Adapter tests verify arXiv-first selection, DOI-only fallback, no request without IDs, partial results, and the unknown fallback. They also verify that no Semantic Scholar request occurs for an arXiv candidate.
 - **T5 (R5) — Authority-assessment bridge.** A newest-paper pipeline test sends a DOI-only Semantic Scholar candidate through affiliation collection and verifies that the authority assessor receives its names and institutions. A second test verifies the unchanged unknown input when Semantic Scholar returns no affiliations.
 - **T6 (R6) — Configuration.** Configuration tests verify API-key, proxy, pacing, retry, and backoff forwarding to the Comourat affiliation core.
-- **T7 (R7, R8) — Regression and documentation.** Existing arXiv affiliation and legacy collector tests pass. Documentation checks cover the new source behavior. The complete suite and configured format, import-order, lint, and type checks pass without live network access.
+- **T7 (R7, R8) — Regression and documentation.** Existing arXiv affiliation and legacy collector tests pass. Documentation checks cover the new source behavior. The complete suite passes without live network access. Format, import-order, lint, and type checks on touched files introduce no new findings. The final report records unrelated findings that already exist on the base revision.
 
 ### 3. Implementation plan
 
