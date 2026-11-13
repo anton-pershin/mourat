@@ -570,6 +570,20 @@ class TestContentItemId:
             == "paper_attention_is_all_you_need"
         )
 
+    def test_normalized_doi_is_used_after_arxiv_id(self):
+        assert _content_item_id("Journal", doi="HTTPS://DOI.ORG/10.1234/ABC") == (
+            "paper_doi-10.1234/abc"
+        )
+        assert (
+            _content_item_id("arXiv wins", arxiv_id="2401.00001", doi="10.1234/ABC")
+            == "paper_arxiv-2401.00001"
+        )
+
+    def test_arxiv_doi_canonicalizes_to_arxiv_id(self):
+        assert _content_item_id("Preprint", doi="10.48550/arXiv.2401.00001") == (
+            "paper_arxiv-2401.00001"
+        )
+
 
 class TestContentItemDbWriter:
     def test_creates_content_item_and_links(self, db_conn):
@@ -661,7 +675,7 @@ class TestContentItemDbWriter:
         assert item is not None  # paper itself was written
 
     def test_written_attribute_set_has_no_identifier_fields(self, db_conn):
-        """FR2: identifiers travel in-flight but are never persisted."""
+        """Identifiers use alias rows, not content-item columns."""
         from mourat.database import content_item as ci
 
         handler = _make_monitoring_handler()
@@ -684,6 +698,203 @@ class TestContentItemDbWriter:
         assert item is not None
         assert "doi" not in item
         assert "arxiv_id" not in item
+
+    @staticmethod
+    def _identified_paper(title, arxiv_id=None, doi=None, scores=None):
+        return ScoredPaper(
+            paper=_resolved_paper(
+                title=title,
+                arxiv_id=arxiv_id,
+                doi=doi,
+            ),
+            relevance_scores=[
+                ScoreEntry.model_validate(score) for score in (scores or [])
+            ],
+            filtering_score=80.0,
+        )
+
+    def test_later_arxiv_record_promotes_doi_row_and_moves_links(self, db_conn):
+        from mourat.database import business_domain as bd
+        from mourat.database import content_item as ci
+        from mourat.database.paper_identity import find_paper_content_item_ids
+
+        bd.create_technical_challenge(db_conn, "tc1", "TC one")
+        writer = ContentItemDbWriter(_make_monitoring_handler(), conn=db_conn)
+        doi_paper = self._identified_paper(
+            "Journal version",
+            doi="10.1234/Same",
+            scores=[{"id": "tc1", "type": "tc", "score": 70, "justification": "old"}],
+        )
+        writer(ScoredPaperCollection(papers=[doi_paper]), "4")
+        assert ci.get_content_item(db_conn, "paper_doi-10.1234/same") is not None
+
+        arxiv_paper = self._identified_paper(
+            "arXiv primary",
+            arxiv_id="2401.00001",
+            doi="10.1234/same",
+        )
+        writer(ScoredPaperCollection(papers=[arxiv_paper]), "5")
+
+        assert ci.get_content_item(db_conn, "paper_doi-10.1234/same") is None
+        item = ci.get_content_item(db_conn, "paper_arxiv-2401.00001")
+        assert item is not None
+        assert item["name"] == "arXiv primary"
+        assert db_conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0] == 1
+        links = ci.list_item_technical_challenges(db_conn, "paper_arxiv-2401.00001")
+        assert [link["id"] for link in links] == ["tc1"]
+        assert find_paper_content_item_ids(
+            db_conn, arxiv_id="2401.00001", doi="10.1234/same"
+        ) == ["paper_arxiv-2401.00001"]
+
+    def test_doi_only_record_preserves_arxiv_metadata_and_refreshes_links(
+        self, db_conn
+    ):
+        from mourat.database import business_domain as bd
+        from mourat.database import content_item as ci
+
+        bd.create_technical_challenge(db_conn, "tc1", "Old challenge")
+        bd.create_technical_challenge(db_conn, "tc2", "New challenge")
+        handler = _make_monitoring_handler()
+        writer = ContentItemDbWriter(handler, conn=db_conn)
+        arxiv_paper = self._identified_paper(
+            "arXiv primary",
+            arxiv_id="2401.00001",
+            doi="10.1234/same",
+            scores=[{"id": "tc1", "type": "tc", "score": 70, "justification": "old"}],
+        )
+        writer(ScoredPaperCollection(papers=[arxiv_paper]), "4")
+        doi_update = self._identified_paper(
+            "Secondary metadata",
+            doi="10.1234/same",
+            scores=[{"id": "tc2", "type": "tc", "score": 90, "justification": "new"}],
+        )
+        writer(ScoredPaperCollection(papers=[doi_update]), "5")
+
+        item = ci.get_content_item(db_conn, "paper_arxiv-2401.00001")
+        assert item is not None
+        assert item["name"] == "arXiv primary"
+        assert db_conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0] == 1
+        links = ci.list_item_technical_challenges(db_conn, "paper_arxiv-2401.00001")
+        assert [(link["id"], link["relevance_score"]) for link in links] == [
+            ("tc2", 90)
+        ]
+        assert "skipped: 1" in handler.calls[-1][1]
+
+    def test_preexisting_arxiv_and_doi_rows_are_merged(self, db_conn):
+        from mourat.database import content_item as ci
+
+        writer = ContentItemDbWriter(_make_monitoring_handler(), conn=db_conn)
+        doi_paper = self._identified_paper("DOI copy", doi="10.1234/same")
+        writer(ScoredPaperCollection(papers=[doi_paper]), "4")
+        ci.create_content_item(
+            db_conn,
+            id="paper_arxiv-2401.00001",
+            name="Existing arXiv copy",
+            source_type_id="paper",
+            platform_id="web",
+            influence_metric_id="citations",
+            description="existing",
+        )
+
+        arxiv_paper = self._identified_paper(
+            "arXiv primary",
+            arxiv_id="2401.00001",
+            doi="10.1234/same",
+        )
+        writer(ScoredPaperCollection(papers=[arxiv_paper]), "5")
+
+        assert ci.get_content_item(db_conn, "paper_doi-10.1234/same") is None
+        assert ci.get_content_item(db_conn, "paper_arxiv-2401.00001")["name"] == (
+            "arXiv primary"
+        )
+        assert db_conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0] == 1
+
+    def test_metadata_failure_rolls_back_promotion_and_strict_writer_raises(
+        self, db_conn, monkeypatch
+    ):
+        from mourat.database import content_item as ci
+        from mourat.database.paper_identity import find_paper_content_item_ids
+
+        writer = ContentItemDbWriter(_make_monitoring_handler(), conn=db_conn)
+        doi_paper = self._identified_paper("DOI version", doi="10.1234/same")
+        writer(ScoredPaperCollection(papers=[doi_paper]), "4")
+        arxiv_paper = self._identified_paper(
+            "arXiv primary", arxiv_id="2401.00001", doi="10.1234/same"
+        )
+
+        def fail_update(*args, **kwargs):
+            raise sqlite3.DatabaseError("injected update failure")
+
+        monkeypatch.setattr(ci, "update_content_item", fail_update)
+        strict_writer = ContentItemDbWriter(
+            _make_monitoring_handler(), conn=db_conn, fail_on_error=True
+        )
+        with pytest.raises(sqlite3.DatabaseError):
+            strict_writer(ScoredPaperCollection(papers=[arxiv_paper]), "5")
+
+        assert ci.get_content_item(db_conn, "paper_doi-10.1234/same")["name"] == (
+            "DOI version"
+        )
+        assert ci.get_content_item(db_conn, "paper_arxiv-2401.00001") is None
+        assert find_paper_content_item_ids(db_conn, doi="10.1234/same") == [
+            "paper_doi-10.1234/same"
+        ]
+        assert find_paper_content_item_ids(db_conn, arxiv_id="2401.00001") == []
+
+    def test_alias_failure_rolls_back_metadata_and_returns_failed(
+        self, db_conn, monkeypatch
+    ):
+        from mourat.database import content_item as ci
+
+        handler = _make_monitoring_handler()
+        writer = ContentItemDbWriter(handler, conn=db_conn)
+        original = self._identified_paper(
+            "Original metadata", arxiv_id="2401.00001", doi="10.1234/same"
+        )
+        writer(ScoredPaperCollection(papers=[original]), "4")
+        changed = self._identified_paper(
+            "Changed metadata", arxiv_id="2401.00001", doi="10.1234/same"
+        )
+
+        def fail_aliases(*args, **kwargs):
+            raise sqlite3.DatabaseError("injected alias failure")
+
+        monkeypatch.setattr(
+            "mourat.writers.db_writer.register_paper_aliases", fail_aliases
+        )
+        writer(ScoredPaperCollection(papers=[changed]), "5")
+
+        item = ci.get_content_item(db_conn, "paper_arxiv-2401.00001")
+        assert item["name"] == "Original metadata"
+        assert "failed: 1" in handler.calls[-1][1]
+
+    def test_link_failure_rolls_back_create_and_strict_writer_raises(
+        self, db_conn, monkeypatch
+    ):
+        from mourat.database import business_domain as bd
+        from mourat.database import content_item as ci
+
+        bd.create_technical_challenge(db_conn, "tc1", "Challenge")
+        paper = self._identified_paper(
+            "Paper with links",
+            doi="10.1234/links",
+            scores=[{"id": "tc1", "type": "tc", "score": 80, "justification": "new"}],
+        )
+
+        def fail_link(*args, **kwargs):
+            raise sqlite3.DatabaseError("injected link failure")
+
+        monkeypatch.setattr(ci, "add_item_technical_challenge", fail_link)
+        writer = ContentItemDbWriter(
+            _make_monitoring_handler(), conn=db_conn, fail_on_error=True
+        )
+        with pytest.raises(sqlite3.DatabaseError):
+            writer(ScoredPaperCollection(papers=[paper]), "4")
+
+        assert ci.get_content_item(db_conn, "paper_doi-10.1234/links") is None
+        assert (
+            db_conn.execute("SELECT COUNT(*) FROM paper_identities").fetchone()[0] == 0
+        )
 
 
 # --- JsonlWriter ---
@@ -837,6 +1048,29 @@ class TestJsonlWriter:
         )
 
         assert result.papers == []
+
+    def test_skip_existing_uses_doi_alias_of_arxiv_primary(self, db_conn, tmp_path):
+        arxiv_paper = TestContentItemDbWriter._identified_paper(
+            "arXiv primary",
+            arxiv_id="2401.00001",
+            doi="10.1234/same",
+        )
+        ContentItemDbWriter(_make_monitoring_handler(), conn=db_conn)(
+            ScoredPaperCollection(papers=[arxiv_paper]), "4"
+        )
+        doi_paper = TestContentItemDbWriter._identified_paper(
+            "Secondary metadata", doi="10.1234/same"
+        )
+        path = tmp_path / "papers.jsonl"
+        result = JsonlWriter(
+            _make_monitoring_handler(),
+            str(path),
+            skip_existing=True,
+            conn=db_conn,
+        )(ScoredPaperCollection(papers=[doi_paper]), "5")
+
+        assert result.papers == []
+        assert path.read_text(encoding="utf-8") == ""
 
     def test_skip_existing_reports_written_and_skipped_counts(self, db_conn, tmp_path):
         # T4 (R4, R5): return the filtered collection and report both counts.

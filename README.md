@@ -66,8 +66,8 @@ from the subdirectories of `config/`.
 
 Some component configurations read additional optional variables:
 
-- `SEMANTIC_SCHOLAR_API_KEY` selects authenticated Semantic Scholar access when that
-  graph client is configured.
+- `SEMANTIC_SCHOLAR_API_KEY` selects authenticated access for the Semantic Scholar
+  newest-paper collector and graph clients when they are configured.
 - `SEMANTIC_SCHOLAR_PROXY` configures a proxy for Semantic Scholar, paper discovery,
   Reddit web enrichment, and Hacker News content fetching where applicable.
 - `ARXIV_PROXY` configures an explicit proxy for arXiv PDF verification. The protected
@@ -123,35 +123,82 @@ items that already exist.
 
 Hydra writes run files below `MOURAT_HYDRA_PATH`, grouped by date and time. The default
 monitoring handler writes one Markdown file per pipeline step to the result directory.
-Logs show step starts, completion times, failures, and item counts where the component
-provides them.
+Newest-paper source collectors and their merge report use distinct step IDs, so their
+files do not overwrite each other. Logs show step starts, completion times, failures,
+and item counts where the component provides them.
 
 ## Active collection pipelines
 
 ### `collect_newest_papers.py`
 
-Collects new arXiv submissions from all RSS feeds configured under `feeds`. With
-`only_new_submissions: true`, replacements and cross-listings are excluded.
+Collects papers from arXiv, Semantic Scholar, or both sources. The `sources` list
+selects the enabled sources and defaults to `[arxiv, semantic_scholar]`. Use `[arxiv]`
+or `[semantic_scholar]` for one source. The selected collectors produce one merged
+candidate collection before relevance triage.
 
 **Pipeline:**
 
-`ArxivPaperCollector` → `RelevanceTriageClassifier` →
-`ArxivHtmlAffiliationFetcher` → `AuthorityInfluenceAssessor` →
-`CandidateToResolvedConverter` → `PaperContentItemScorer` → `PaperScoreFilter` →
-`JsonlWriter` and/or `ContentItemDbWriter`.
+`ArxivPaperCollector` and/or `SemanticScholarNewestPaperCollector` → canonical
+identity merge → `RelevanceTriageClassifier` → `ArxivHtmlAffiliationFetcher` →
+`AuthorityInfluenceAssessor` → `CandidateToResolvedConverter` →
+`PaperContentItemScorer` → `PaperScoreFilter` → `JsonlWriter` and/or
+`ContentItemDbWriter`.
 
+`SemanticScholarNewestPaperCollector` is a thin `Function` adapter over Comourat
+`SemanticScholarPaperCollectorCore` in `publication_window` mode. Comourat owns bulk
+transport, bounded retries, continuation tokens, and neutral payload conversion.
+Mourat computes the publication window and owns source selection, monitoring, the
+ledger, identity merging, and persistence.
+
+- arXiv collection reads all RSS feeds configured under `feeds`. With
+  `only_new_submissions: true`, replacements and cross-listings are excluded.
+- Semantic Scholar collection runs each query in `semantic_scholar_newest.queries`
+  through bulk search. It uses bibliographic publication dates, not ingestion dates or
+  arXiv announcement types.
+- For UTC reference date `T`, the inclusive end date is `T - lag_days`. The start date
+  is the end date minus `stride_days - 1` and `backfill_days`. The defaults are 30 lag
+  days, one stride day, and no backfill. Thus, a normal run queries one delayed date.
+  Set `reference_date` to rerun a selected UTC date. Increase `backfill_days` to
+  include earlier dates after a failed run or to find late-indexed papers.
+- The collector follows every continuation token by default.
+  `max_results_per_query` can set a positive local cap. Reaching the cap is reported.
+- A SQLite ledger records Semantic Scholar provider IDs after all enabled writers
+  return. Later overlapping runs exclude these IDs before triage, including IDs of
+  papers previously rejected as irrelevant. A failure before the final ledger step
+  leaves new IDs available for retry. The newest-paper database writer stops on a
+  content, link, or alias write failure and rolls back the affected paper.
+- Candidates are deduplicated by normalized arXiv ID and DOI. arXiv metadata has
+  precedence, while Semantic Scholar can add DOI and provenance data. A paper found
+  only through Semantic Scholar must have a non-arXiv DOI and a provider paper ID.
+  Other Semantic Scholar-only records are excluded before triage.
+- Content-item IDs use arXiv identity first, DOI second, and the title slug last.
+  SQLite aliases prevent duplicate rows across runs. A later arXiv record promotes a
+  DOI-only row to the arXiv-derived ID and retains its links. A DOI-only update does
+  not replace arXiv-primary metadata. The pipeline adds the alias and ledger tables to
+  an existing database automatically.
 - Relevance triage is a batched boolean filter over research questions, technical
   challenges, and research topics. Constraints do not participate in triage.
-- The affiliation fetcher reads arXiv HTML. The authority assessor gives an LLM-based
-  influence score from 0 to 100.
+- The affiliation fetcher reads arXiv HTML only when a candidate has an arXiv ID.
+  DOI-only papers retain unknown affiliations. The authority assessor gives an
+  LLM-based influence score from 0 to 100.
 - The scorer gives a relevance score from 0 to 100 for each configured research
   attribute. Constraints contribute to the filtering score. At least one research
   question, technical challenge, or research topic ID must resolve.
 - The JSONL writer can optionally skip papers already in the database when
-  `jsonl_writer.skip_existing` is enabled.
+  `jsonl_writer.skip_existing` is enabled. This check includes arXiv and DOI aliases.
 
-**Configuration:** `config/config_collect_newest_papers.yaml` controls the feeds,
-research-attribute IDs, model roles, relevance threshold, and writers.
+**Configuration:** `config/config_collect_newest_papers.yaml` controls the sources,
+feeds, research-attribute IDs, model roles, relevance threshold, and writers.
+`config/semantic_scholar_newest/default.yaml` controls queries, API access, retries,
+the publication window, and pagination. For example:
+
+```bash
+python -m mourat.scripts.collect_newest_papers \
+  sources=[semantic_scholar] \
+  semantic_scholar_newest.reference_date=2026-10-12 \
+  semantic_scholar_newest.backfill_days=7
+```
+
 
 ### `collect_influential_papers_from_scratch.py`
 
@@ -383,7 +430,7 @@ The package has these responsibilities:
 | `mourat/scripts/` | Hydra entry points and pipeline orchestration. |
 | `mourat/base.py` | Generic `Function` execution, logging, and monitoring wrapper. |
 | `mourat/data_models.py` | Pydantic database, scoring, paper, and post models. It also imports neutral source models from `comourat.models`. |
-| `mourat/collectors/` | Adapters for arXiv, Reddit, Hacker News, paper discovery, seed expansion, and affiliation collection. |
+| `mourat/collectors/` | Adapters for arXiv, Semantic Scholar, Reddit, Hacker News, paper discovery, seed expansion, and affiliation collection. |
 | `mourat/resolvers/` | Canonical paper and seed resolution. |
 | `mourat/processors/` | Relevance triage and scoring, influence assessment, candidate conversion, PDF verification, and Hacker News fetching and summarization. |
 | `mourat/enrichers/` | Reddit web-enrichment adapter. |

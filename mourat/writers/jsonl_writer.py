@@ -7,9 +7,9 @@ import logging
 
 from mourat.base import Function
 from mourat.data_models import ScoredPaperCollection
-from mourat.database import content_item as ci
+from mourat.database import apply_schema
+from mourat.database.paper_identity import find_existing_content_item_id
 from mourat.monitoring import MonitoringHandler
-from mourat.writers.db_writer import _content_item_id
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +60,16 @@ class JsonlWriter(Function[ScoredPaperCollection, ScoredPaperCollection]):
         papers = data.papers
         skipped = 0
         if self.skip_existing:
+            apply_schema(self.conn)
             kept = []
             for sp in papers:
-                item_id = _content_item_id(
-                    sp.paper.title, getattr(sp.paper, "arxiv_id", None)
+                item_id = find_existing_content_item_id(
+                    self.conn,
+                    title=sp.paper.title,
+                    arxiv_id=getattr(sp.paper, "arxiv_id", None),
+                    doi=getattr(sp.paper, "doi", None),
                 )
-                if ci.get_content_item(self.conn, item_id) is None:
+                if item_id is None:
                     kept.append(sp)
                 else:
                     skipped += 1

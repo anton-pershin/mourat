@@ -68,21 +68,25 @@ No insight is needed.
 
 #### 5.1. High-level design
 
-Solid arrows show pipeline data flow and output writes. Dashed arrows show database reads. Each collection workflow stores items only on request.
+Solid arrows show pipeline data flow and output writes. Dashed arrows show database reads and collection-ledger writes. Each collection workflow stores items only on request.
 
 collect_newest_papers.py — Newest papers
 
 ```mermaid
 flowchart LR
   DB[("Database")]
-  N1["Producer\nCollect arXiv papers"] --> N2["Sieve\nRelevance triage"] --> N3["Map\nFetch affiliations"] --> N4["Map\nAssess authority influence"] --> N5["Map\nResolve candidates"] --> N6["Map\nScore research relevance"] --> N7["Sieve\nFilter by score"]
+  N1["Producer\nCollect and merge newest papers"] --> N2["Sieve\nRelevance triage"] --> N3["Map\nFetch affiliations"] --> N4["Map\nAssess authority influence"] --> N5["Map\nResolve candidates"] --> N6["Map\nScore research relevance"] --> N7["Sieve\nFilter by score"]
   N7 --> NDB["Consumer\nDatabase writer"]
   N7 --> NJ["Consumer\nJSONL writer"]
+  DB -. "research context and collection ledger" .-> N1
   DB -. "research context" .-> N2
   DB -. "research context" .-> N6
+  N1 -. "record after success" .-> DB
   NDB -->|"store on request"| DB
   NJ --> NFILE[("JSONL output")]
 ```
+
+Newest-paper sources have different date semantics. arXiv uses RSS announcements and can retain only new submissions. Semantic Scholar uses bibliographic publication dates in a configured delayed window. Its publication date does not show when Semantic Scholar indexed the paper. Optional backfill and the collection ledger support repeated runs.
 
 collect_influential_papers_from_scratch.py — Influential papers from scratch
 
@@ -151,7 +155,7 @@ flowchart LR
 
 - **Collection pipelines**
   - **`collect_newest_papers.py`** — orchestrator
-    - Producer: collect newest papers.
+    - Producer: collect newest papers from configured sources and merge them by paper identity.
     - Maps and sieves: triage relevance, fetch affiliations, assess authority influence, resolve candidates, score research relevance, and filter by score.
     - Consumers: database writer and JSONL writer.
   - **`collect_influential_papers_from_scratch.py`** — orchestrator

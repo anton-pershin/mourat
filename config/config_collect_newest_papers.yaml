@@ -6,6 +6,7 @@ defaults:
   - llm/caila_gpt_6_luna@scoring_llm
   - llm/caila_gpt_6_luna@authority_llm
   - relevance_triage: default
+  - semantic_scholar_newest: default
   - arxiv_html_affiliations: default
   - authority_influence: default
   - candidate_converter: default
@@ -18,6 +19,11 @@ result_dir: ${user_settings.result_dir}
 hydra_root: ${user_settings.hydra_root}
 hydra_dir: ${user_settings.hydra_dir}
 db_path: ${user_settings.db_path}
+
+# Enabled newest-paper sources. Use [arxiv] or [semantic_scholar] for one source.
+sources:
+  - arxiv
+  - semantic_scholar
 
 # Per-feed collector configs (R8): each entry is one arXiv RSS feed.
 feeds:

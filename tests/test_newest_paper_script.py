@@ -59,6 +59,7 @@ def _hydra_cfg(tmp_path, dbfile, overrides=()):
                 f"++jsonl_output_path={tmp_path}/out.jsonl",
                 "research_topic_ids=[topic1]",
                 "monitoring_handler=dummy_test",
+                "++sources=[arxiv]",
                 *overrides,
             ],
         )
@@ -191,8 +192,9 @@ class TestScriptWiring:
 
         fake_client.get.side_effect = get_side_effect
 
-        import httpx as real_httpx
         from types import SimpleNamespace
+
+        import httpx as real_httpx
 
         monkeypatch.setattr(
             "mourat.scripts.collect_newest_papers.httpx",
@@ -304,8 +306,9 @@ class TestScriptWiring:
             )
 
         fake_client.get.side_effect = get_side_effect
-        import httpx as real_httpx
         from types import SimpleNamespace
+
+        import httpx as real_httpx
 
         monkeypatch.setattr(
             "mourat.scripts.collect_newest_papers.httpx",
@@ -388,8 +391,9 @@ class TestScriptWiring:
             )
 
         fake_client.get.side_effect = get_side_effect
-        import httpx as real_httpx
         from types import SimpleNamespace
+
+        import httpx as real_httpx
 
         monkeypatch.setattr(
             "mourat.scripts.collect_newest_papers.httpx",
@@ -416,3 +420,398 @@ class TestScriptWiring:
         out = Path(cfg.jsonl_output_path)
         assert out.exists()
         assert len(out.read_text().strip().splitlines()) == 1
+
+
+class _SemanticScholarResponse:
+    status_code = 200
+    headers = {}
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def json(self):
+        return self.payload
+
+    def raise_for_status(self):
+        return None
+
+
+def _run_semantic_scholar_script(
+    tmp_path, monkeypatch, output_path=None, fail_db_write=False
+):
+    conn, dbfile = _init_db(tmp_path)
+    conn.close()
+    output_path = output_path or tmp_path / "out.jsonl"
+    cfg = _hydra_cfg(
+        tmp_path,
+        dbfile,
+        overrides=[
+            "++sources=[semantic_scholar]",
+            "db_writer.enabled=true",
+            f"++jsonl_output_path={output_path}",
+            "semantic_scholar_newest.api_url=http://fake/ss",
+            "semantic_scholar_newest.reference_date=2024-02-01",
+            "semantic_scholar_newest.regular_delay_seconds=0",
+            "semantic_scholar_newest.backoff_seconds=0",
+            "semantic_scholar_newest.jitter_seconds=0",
+        ],
+    )
+    scripted = [
+        json.dumps({"verdicts": [{"id": "paper_0", "relevant": True}]}),
+        json.dumps({"verdicts": [{"id": "paper_0", "score": 88}]}),
+        json.dumps(
+            {
+                "scores": [
+                    {
+                        "id": "topic1",
+                        "type": "topic",
+                        "score": 90,
+                        "justification": "on topic",
+                    }
+                ]
+            }
+        ),
+    ]
+
+    from mourat.database import init_db
+
+    monkeypatch.setattr(
+        "mourat.scripts.collect_newest_papers.create_connection",
+        lambda path: init_db(dbfile),
+    )
+    payload = {
+        "data": [
+            {
+                "paperId": "ss-journal",
+                "title": "KV Cache Journal Paper",
+                "url": "https://example.com/journal",
+                "abstract": "A journal method for KV cache optimization",
+                "citationCount": 0,
+                "publicationDate": "2024-01-02",
+                "authors": [{"name": "J. Smith"}],
+                "externalIds": {"DOI": "10.1234/JOURNAL"},
+            }
+        ],
+        "token": None,
+    }
+    fake_client = MagicMock()
+    fake_client.get.side_effect = lambda url, **kwargs: (
+        _SemanticScholarResponse(payload)
+        if url == "http://fake/ss/paper/search/bulk"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected URL: {url}"))
+    )
+
+    from types import SimpleNamespace
+
+    import httpx as real_httpx
+
+    monkeypatch.setattr(
+        "mourat.scripts.collect_newest_papers.httpx",
+        SimpleNamespace(
+            Client=lambda **kw: fake_client,
+            Timeout=real_httpx.Timeout,
+        ),
+    )
+
+    import hydra as _hydra
+
+    real_instantiate = _hydra.utils.instantiate
+
+    def smart_instantiate(cfg_node, *args, **kwargs):
+        target = cfg_node.get("_target_", "") if hasattr(cfg_node, "get") else ""
+        if target.endswith(("OpenAIChatModel", "OpenAIResponsesModel")):
+            return _llm_factory(scripted)
+        return real_instantiate(cfg_node, *args, **kwargs)
+
+    monkeypatch.setattr(_hydra.utils, "instantiate", smart_instantiate)
+    if fail_db_write:
+
+        def fail_create(*args, **kwargs):
+            raise sqlite3.DatabaseError("injected database write failure")
+
+        monkeypatch.setattr(
+            "mourat.writers.db_writer.ci.create_content_item", fail_create
+        )
+
+    from mourat.scripts.collect_newest_papers import collect_newest_papers_main
+
+    collect_newest_papers_main(cfg)
+    return dbfile, output_path, fake_client
+
+
+def test_semantic_scholar_only_reaches_shared_tail_and_records_ledger(
+    tmp_path, monkeypatch
+):
+    dbfile, output_path, fake_client = _run_semantic_scholar_script(
+        tmp_path, monkeypatch
+    )
+
+    records = [json.loads(line) for line in output_path.read_text().splitlines()]
+    assert [record["title"] for record in records] == ["KV Cache Journal Paper"]
+    assert records[0]["provenance"] == ["semantic_scholar"]
+    assert all(
+        call.args[0] == "http://fake/ss/paper/search/bulk"
+        for call in fake_client.get.call_args_list
+    )
+
+    from mourat.database import content_item as ci
+    from mourat.database import init_db
+    from mourat.database.paper_identity import list_semantic_scholar_ledger_ids
+
+    conn = init_db(dbfile)
+    item = ci.get_content_item(conn, "paper_doi-10.1234/journal")
+    assert item is not None
+    assert item["influence_score"] == 88
+    assert list_semantic_scholar_ledger_ids(conn) == {"ss-journal"}
+    conn.close()
+
+
+def test_both_sources_write_combined_output_with_arxiv_precedence(
+    tmp_path, monkeypatch
+):
+    conn, dbfile = _init_db(tmp_path)
+    conn.close()
+    cfg = _hydra_cfg(
+        tmp_path,
+        dbfile,
+        overrides=[
+            "++sources=[arxiv,semantic_scholar]",
+            "db_writer.enabled=true",
+            "feeds.cs_lg.api_url=http://fake/rss",
+            "semantic_scholar_newest.api_url=http://fake/ss",
+            "semantic_scholar_newest.queries=[query]",
+            "semantic_scholar_newest.reference_date=2024-02-01",
+            "semantic_scholar_newest.regular_delay_seconds=0",
+            "semantic_scholar_newest.backoff_seconds=0",
+            "semantic_scholar_newest.jitter_seconds=0",
+            "monitoring_handler=via_md_files",
+            f"result_dir={tmp_path}",
+        ],
+    )
+    scripted = [
+        json.dumps(
+            {
+                "verdicts": [
+                    {"id": "paper_0", "relevant": True},
+                    {"id": "paper_1", "relevant": False},
+                    {"id": "paper_2", "relevant": True},
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "verdicts": [
+                    {"id": "paper_0", "score": 88},
+                    {"id": "paper_1", "score": 77},
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "scores": [
+                    {
+                        "id": "topic1",
+                        "type": "topic",
+                        "score": 90,
+                        "justification": "on topic",
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "scores": [
+                    {
+                        "id": "topic1",
+                        "type": "topic",
+                        "score": 80,
+                        "justification": "on topic",
+                    }
+                ]
+            }
+        ),
+    ]
+    payload = {
+        "data": [
+            {
+                "paperId": "ss-shared",
+                "title": "Semantic Scholar secondary title",
+                "url": "https://example.com/shared",
+                "abstract": "Secondary abstract",
+                "publicationDate": "2024-01-02",
+                "authors": [{"name": "J. Smith"}],
+                "externalIds": {
+                    "ArXiv": "2401.00001",
+                    "DOI": "10.1234/shared",
+                },
+            },
+            {
+                "paperId": "ss-journal",
+                "title": "Semantic Scholar journal",
+                "url": "https://example.com/journal",
+                "abstract": "Journal abstract",
+                "publicationDate": "2024-01-02",
+                "authors": [{"name": "A. Author"}],
+                "externalIds": {"DOI": "10.1234/journal"},
+            },
+        ],
+        "token": None,
+    }
+    empty_feed = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"/>'
+    fake_client = MagicMock()
+
+    def get_side_effect(url, **kwargs):
+        if url == "http://fake/rss":
+            return _FakeResponse(SAMPLE_FEED)
+        if url == "http://fake/ss/paper/search/bulk":
+            return _SemanticScholarResponse(payload)
+        if url == "https://arxiv.org/html/2401.00001v1":
+            return _FakeResponse(AFFIL_HTML)
+        return _FakeResponse(empty_feed)
+
+    fake_client.get.side_effect = get_side_effect
+    from mourat.database import init_db
+
+    monkeypatch.setattr(
+        "mourat.scripts.collect_newest_papers.create_connection",
+        lambda path: init_db(dbfile),
+    )
+    from types import SimpleNamespace
+
+    import httpx as real_httpx
+
+    monkeypatch.setattr(
+        "mourat.scripts.collect_newest_papers.httpx",
+        SimpleNamespace(
+            Client=lambda **kw: fake_client,
+            Timeout=real_httpx.Timeout,
+        ),
+    )
+    import hydra as _hydra
+
+    real_instantiate = _hydra.utils.instantiate
+
+    def smart_instantiate(cfg_node, *args, **kwargs):
+        target = cfg_node.get("_target_", "") if hasattr(cfg_node, "get") else ""
+        if target.endswith(("OpenAIChatModel", "OpenAIResponsesModel")):
+            return _llm_factory(scripted)
+        return real_instantiate(cfg_node, *args, **kwargs)
+
+    monkeypatch.setattr(_hydra.utils, "instantiate", smart_instantiate)
+    from mourat.scripts.collect_newest_papers import collect_newest_papers_main
+
+    collect_newest_papers_main(cfg)
+
+    arxiv_monitor = (tmp_path / "step_1-arxiv-cs_lg.md").read_text()
+    semantic_monitor = (tmp_path / "step_1-semantic_scholar.md").read_text()
+    merge_monitor = (tmp_path / "step_1-merge.md").read_text()
+    assert "http://fake/rss" in arxiv_monitor
+    assert "# Publication window" in semantic_monitor
+    assert "2024-01-02 to 2024-01-02" in semantic_monitor
+    assert "# Source merge" in merge_monitor
+
+    records = [
+        json.loads(line)
+        for line in Path(cfg.jsonl_output_path).read_text().splitlines()
+    ]
+    assert [record["title"] for record in records] == [
+        "KV Cache Trick",
+        "Semantic Scholar journal",
+    ]
+    assert records[0]["provenance"] == ["arxiv", "semantic_scholar"]
+    assert records[1]["provenance"] == ["semantic_scholar"]
+
+    from mourat.database import content_item as ci
+    from mourat.database.paper_identity import (
+        find_paper_content_item_ids,
+        list_semantic_scholar_ledger_ids,
+    )
+
+    conn = init_db(dbfile)
+    assert ci.get_content_item(conn, "paper_arxiv-2401.00001") is not None
+    assert ci.get_content_item(conn, "paper_doi-10.1234/journal") is not None
+    assert conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0] == 2
+    assert find_paper_content_item_ids(conn, doi="10.1234/shared") == [
+        "paper_arxiv-2401.00001"
+    ]
+    assert list_semantic_scholar_ledger_ids(conn) == {"ss-shared", "ss-journal"}
+    conn.close()
+
+
+def test_failure_before_writers_finish_leaves_ledger_retryable(tmp_path, monkeypatch):
+    from mourat.database import init_db
+    from mourat.database.paper_identity import list_semantic_scholar_ledger_ids
+
+    with pytest.raises(FileNotFoundError):
+        _run_semantic_scholar_script(
+            tmp_path,
+            monkeypatch,
+            output_path=tmp_path / "missing" / "out.jsonl",
+        )
+
+    dbfile = next(tmp_path.glob("*.db"))
+    conn = init_db(dbfile)
+    assert list_semantic_scholar_ledger_ids(conn) == set()
+    conn.close()
+
+
+def test_database_writer_failure_does_not_record_ledger(tmp_path, monkeypatch):
+    from mourat.database import init_db
+    from mourat.database.paper_identity import list_semantic_scholar_ledger_ids
+
+    with pytest.raises(sqlite3.DatabaseError):
+        _run_semantic_scholar_script(tmp_path, monkeypatch, fail_db_write=True)
+
+    dbfile = next(tmp_path.glob("*.db"))
+    conn = init_db(dbfile)
+    assert list_semantic_scholar_ledger_ids(conn) == set()
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    "sources,expected",
+    [
+        (["arxiv"], ("arxiv",)),
+        (["semantic_scholar"], ("semantic_scholar",)),
+        (["semantic_scholar", "arxiv"], ("arxiv", "semantic_scholar")),
+    ],
+)
+def test_source_selection_supports_each_enabled_combination(sources, expected):
+    from omegaconf import OmegaConf
+
+    from mourat.scripts.collect_newest_papers import _selected_sources
+
+    cfg = OmegaConf.create({"sources": sources})
+    assert _selected_sources(cfg) == expected
+
+
+@pytest.mark.parametrize("sources", [[], ["unknown"], ["arxiv", "arxiv"]])
+def test_source_selection_rejects_invalid_values(sources):
+    from omegaconf import OmegaConf
+
+    from mourat.scripts.collect_newest_papers import _selected_sources
+
+    with pytest.raises(ValueError):
+        _selected_sources(OmegaConf.create({"sources": sources}))
+
+
+def test_default_configuration_selects_both_sources(tmp_path):
+    from hydra import compose, initialize_config_dir
+
+    conn, dbfile = _init_db(tmp_path)
+    conn.close()
+    config_dir = Path(REPO) / "config"
+    with initialize_config_dir(config_dir=str(config_dir), version_base="1.3"):
+        cfg = compose(
+            config_name="config_collect_newest_papers",
+            overrides=[
+                f"++db_path={dbfile}",
+                "research_topic_ids=[topic1]",
+                "monitoring_handler=dummy_test",
+            ],
+        )
+    assert list(cfg.sources) == ["arxiv", "semantic_scholar"]
+    assert cfg.semantic_scholar_newest.lag_days == 30
+    assert cfg.semantic_scholar_newest.stride_days == 1
+    assert cfg.semantic_scholar_newest.backfill_days == 0
+    assert cfg.semantic_scholar_newest.max_results_per_query is None
