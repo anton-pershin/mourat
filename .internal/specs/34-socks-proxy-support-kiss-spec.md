@@ -63,11 +63,11 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests.
-2. [ ] Run the focused tests and confirm that they fail.
-3. [ ] Add the HTTPX SOCKS extra to both runtime dependency declarations.
-4. [ ] Install the updated dependency in the test environment and run the focused tests.
-5. [ ] Run the complete test suite and quality checks.
+1. [x] Write the tests.
+2. [x] Run the focused tests and confirm that they fail.
+3. [x] Add the HTTPX SOCKS extra to both runtime dependency declarations.
+4. [x] Install the updated dependency in the test environment and run the focused tests.
+5. [x] Run the complete test suite and quality checks.
 
 #### 3.4 Modification summary
 
