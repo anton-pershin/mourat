@@ -304,13 +304,6 @@ class PaperCandidate(_ComouratPaperCandidate):
             "or 'replace-cross'); monitoring only, never persisted"
         ),
     )
-    semantic_scholar_id: str | None = Field(
-        default=None,
-        description=(
-            "In-flight Semantic Scholar provider paper ID used by the newest-paper "
-            "collection ledger; never persisted as a content-item attribute"
-        ),
-    )
 
 
 class ScoredHNPost(BaseModel):

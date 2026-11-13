@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-
 from comourat.collectors.semantic_scholar import (
     SemanticScholarPaperCollectorCore,
     SemanticScholarSearchMode,
 )
 from comourat.models import PaperInfoCollection
+
 from mourat.base import Function
 from mourat.monitoring import MonitoringHandler
 
@@ -41,6 +41,8 @@ class SemanticScholarPaperCollector(Function[Any, PaperInfoCollection]):
 
     def _run(self, data: Any) -> tuple[PaperInfoCollection, str]:
         output = self.core.collect()
+        if not isinstance(output, PaperInfoCollection):
+            raise TypeError("Comourat legacy collector returned an unexpected result")
 
         text_for_monitoring = (
             "# Query\n"

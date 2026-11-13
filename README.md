@@ -144,6 +144,12 @@ identity merge → `RelevanceTriageClassifier` → `ArxivHtmlAffiliationFetcher`
 `PaperContentItemScorer` → `PaperScoreFilter` → `JsonlWriter` and/or
 `ContentItemDbWriter`.
 
+`SemanticScholarNewestPaperCollector` is a thin `Function` adapter over Comourat
+`SemanticScholarPaperCollectorCore` in `publication_window` mode. Comourat owns bulk
+transport, bounded retries, continuation tokens, and neutral payload conversion.
+Mourat computes the publication window and owns source selection, monitoring, the
+ledger, identity merging, and persistence.
+
 - arXiv collection reads all RSS feeds configured under `feeds`. With
   `only_new_submissions: true`, replacements and cross-listings are excluded.
 - Semantic Scholar collection runs each query in `semantic_scholar_newest.queries`

@@ -112,181 +112,100 @@ def test_collector_validates_window_query_and_pagination_settings(overrides):
         _collector(MagicMock(), **overrides)
 
 
-def test_bulk_search_maps_identity_and_sends_query_window_and_api_key():
+def test_adapter_delegates_to_comourat_and_reports_query_results(monkeypatch):
+    from comourat.models import (
+        SemanticScholarBulkSearchResult,
+        SemanticScholarQueryResult,
+    )
+
+    from mourat.collectors import semantic_scholar_newest
+
     http = MagicMock()
-    http.get.return_value = _response({"data": [_paper()], "token": None})
     handler = _Handler()
+    core = MagicMock()
+    core.collect.return_value = SemanticScholarBulkSearchResult(
+        papers=[
+            PaperCandidate(
+                title="Neutral candidate",
+                authors=["A. Author"],
+                description="Abstract",
+                semantic_scholar_id="ss-1",
+                doi="10.1234/journal",
+                provenance=["semantic_scholar"],
+            )
+        ],
+        query_results=[
+            SemanticScholarQueryResult(
+                query="first", candidate_count=1, cap_reached=False
+            ),
+            SemanticScholarQueryResult(
+                query="second", candidate_count=0, cap_reached=True
+            ),
+        ],
+    )
+    factory = MagicMock(return_value=core)
+    monkeypatch.setattr(
+        semantic_scholar_newest, "SemanticScholarPaperCollectorCore", factory
+    )
     collector = _collector(
         http,
         handler,
         api_key="secret-test-key",
         queries=["first", "second"],
+        max_results_per_query=2,
     )
-    http.get.side_effect = [
-        _response({"data": [_paper()], "token": None}),
-        _response(
-            {
-                "data": [
-                    _paper(
-                        paper_id="ss-2",
-                        title="Second",
-                        doi="HTTPS://DOI.ORG/10.5678/Second",
-                    )
-                ],
-                "token": None,
-            }
-        ),
-    ]
 
     result = collector({}, "1")
 
-    assert len(result.papers) == 2
+    kwargs = factory.call_args.kwargs
+    assert kwargs["http_client"] is http
+    assert kwargs["mode"] == "publication_window"
+    assert kwargs["start_date"] == "2024-01-02"
+    assert kwargs["end_date"] == "2024-01-02"
+    assert kwargs["queries"] == ["first", "second"]
+    assert kwargs["max_results_per_query"] == 2
+    assert kwargs["api_key"] == "secret-test-key"
+    assert http.get.call_count == 0
+    assert [paper.semantic_scholar_id for paper in result.papers] == ["ss-1"]
+    monitoring = handler.calls[-1][1]
+    assert "2024-01-02 to 2024-01-02" in monitoring
+    assert "Query `first`: 1 candidates" in monitoring
+    assert "Query `second`: result cap reached at 2 candidates" in monitoring
+
+
+def test_adapter_uses_the_real_comourat_publication_window_contract():
+    http = MagicMock()
+    http.get.return_value = _response({"data": [_paper()], "token": None})
+    result = _collector(http, api_key="secret-test-key")({}, "1")
+
+    assert len(result.papers) == 1
     first = result.papers[0]
     assert first.semantic_scholar_id == "ss-1"
     assert first.doi == "10.1234/journal"
     assert first.provenance == ["semantic_scholar"]
     assert first.publication_date == "2024-01-02"
-    assert result.papers[1].doi == "10.5678/Second"
-    assert http.get.call_count == 2
-    for call in http.get.call_args_list:
-        assert call.args[0].endswith("/paper/search/bulk")
-        assert call.kwargs["headers"]["x-api-key"] == "secret-test-key"
-        assert call.kwargs["params"]["publicationDateOrYear"] == (
-            "2024-01-02:2024-01-02"
-        )
-        assert "externalIds" in call.kwargs["params"]["fields"]
-        assert "paperId" in call.kwargs["params"]["fields"]
-    assert http.get.call_args_list[0].kwargs["params"]["query"] == "first"
-    assert http.get.call_args_list[1].kwargs["params"]["query"] == "second"
-    assert "2024-01-02" in handler.calls[-1][1]
+    call = http.get.call_args
+    assert call.args[0].endswith("/paper/search/bulk")
+    assert call.kwargs["headers"]["x-api-key"] == "secret-test-key"
+    assert call.kwargs["params"]["publicationDateOrYear"] == ("2024-01-02:2024-01-02")
+    assert "externalIds" in call.kwargs["params"]["fields"]
+    assert "paperId" in call.kwargs["params"]["fields"]
 
 
-def test_bulk_search_follows_tokens_and_applies_local_cap():
-    http = MagicMock()
-    http.get.side_effect = [
-        _response({"data": [_paper("ss-1")], "token": "next-token"}),
-        _response(
-            {
-                "data": [_paper("ss-2", title="Second")],
-                "token": "unused-third-page",
-            }
-        ),
-    ]
-    handler = _Handler()
-    result = _collector(http, handler, max_results_per_query=2)({}, "1")
-
-    assert [paper.semantic_scholar_id for paper in result.papers] == ["ss-1", "ss-2"]
-    assert http.get.call_args_list[1].kwargs["params"]["token"] == "next-token"
-    assert "cap" in handler.calls[-1][1].lower()
-
-    http.reset_mock()
-    http.get.side_effect = [
-        _response({"data": [_paper("ss-1")], "token": "next-token"}),
-        _response({"data": [_paper("ss-2")], "token": None}),
-    ]
-    result = _collector(http, max_results_per_query=1)({}, "1")
-    assert len(result.papers) == 1
-    assert http.get.call_count == 1
-
-
-def test_uncapped_bulk_search_follows_tokens_until_the_result_set_ends():
-    http = MagicMock()
-    http.get.side_effect = [
-        _response({"data": [_paper("ss-1")], "token": "page-two"}),
-        _response({"data": [_paper("ss-2")], "token": "page-three"}),
-        _response({"data": [_paper("ss-3")], "token": None}),
-    ]
-    result = _collector(http, max_results_per_query=None)({}, "1")
-
-    assert [paper.semantic_scholar_id for paper in result.papers] == [
-        "ss-1",
-        "ss-2",
-        "ss-3",
-    ]
-    assert http.get.call_count == 3
-    assert http.get.call_args_list[1].kwargs["params"]["token"] == "page-two"
-    assert http.get.call_args_list[2].kwargs["params"]["token"] == "page-three"
-
-
-def test_bulk_search_excludes_missing_and_out_of_window_publication_dates():
-    http = MagicMock()
-    http.get.return_value = _response(
-        {
-            "data": [
-                _paper("missing-date", publication_date=None),
-                _paper("outside-date", publication_date="2024-01-01"),
-                _paper("inside-date", publication_date="2024-01-02"),
-            ],
-            "token": None,
-        }
-    )
-    result = _collector(http)({}, "1")
-    assert [paper.semantic_scholar_id for paper in result.papers] == ["inside-date"]
-
-
-def test_arxiv_doi_is_canonicalized_to_arxiv_identity():
-    http = MagicMock()
-    http.get.return_value = _response(
-        {
-            "data": [
-                _paper(
-                    doi="10.48550/arXiv.2401.00001",
-                    arxiv_id="2401.00001v2",
-                )
-            ],
-            "token": None,
-        }
-    )
-    result = _collector(http)({}, "1")
-    assert result.papers[0].arxiv_id == "2401.00001"
-    assert result.papers[0].doi is None
-
-
-def test_bounded_retry_recovers_and_exhaustion_raises(monkeypatch):
+def test_adapter_propagates_comourat_failures(monkeypatch):
     from mourat.collectors import semantic_scholar_newest
 
-    sleeps = []
-    monkeypatch.setattr(semantic_scholar_newest.time, "sleep", sleeps.append)
-    http = MagicMock()
-    http.get.side_effect = [
-        _response({"message": "limited"}, 429, {"Retry-After": "3"}),
-        _response({"data": [_paper()], "token": None}),
-    ]
-    result = _collector(http, max_retries=1)({}, "1")
-    assert len(result.papers) == 1
-    assert sleeps == [3.0]
-
-    http.reset_mock()
-    http.get.side_effect = [
-        _response({"message": "down"}, 500),
-        _response({"message": "down"}, 500),
-    ]
-    with pytest.raises(httpx.HTTPStatusError):
-        _collector(http, max_retries=1)({}, "1")
-    assert http.get.call_count == 2
-
-
-def test_transport_errors_use_the_same_bounded_retry_policy(monkeypatch):
-    from mourat.collectors import semantic_scholar_newest
-
-    sleeps = []
-    monkeypatch.setattr(semantic_scholar_newest.time, "sleep", sleeps.append)
-    request = httpx.Request("GET", "https://example.com")
-    http = MagicMock()
-    http.get.side_effect = [
-        httpx.ConnectError("connection failed", request=request),
-        _response({"data": [_paper()], "token": None}),
-    ]
-    result = _collector(http, max_retries=1, backoff_seconds=1)({}, "1")
-
-    assert len(result.papers) == 1
-    assert sleeps == [1.0]
-
-    http.reset_mock()
-    http.get.side_effect = httpx.TimeoutException("timeout", request=request)
-    with pytest.raises(httpx.TimeoutException):
-        _collector(http, max_retries=1, backoff_seconds=0)({}, "1")
-    assert http.get.call_count == 2
+    core = MagicMock()
+    core.collect.side_effect = httpx.ConnectError(
+        "connection failed", request=httpx.Request("GET", "https://example.com")
+    )
+    monkeypatch.setattr(
+        semantic_scholar_newest,
+        "SemanticScholarPaperCollectorCore",
+        MagicMock(return_value=core),
+    )
+    with pytest.raises(httpx.ConnectError):
+        _collector(MagicMock())({}, "1")
 
 
 def _candidate(
