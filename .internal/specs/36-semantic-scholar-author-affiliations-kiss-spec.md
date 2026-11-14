@@ -1,6 +1,6 @@
 ## Semantic Scholar author affiliations
 
-This spec implements GitHub issue #36. It replaces the DOI-only unknown-affiliation rule in spec 28 FR9. The other requirements in spec 28 remain unchanged.
+This spec implements GitHub issue #36. It replaces the DOI-only unknown-affiliation rule in spec 28 FR9 and the corresponding no-request expectation in spec 28 AC6. Spec 28 records both replacements. The other requirements in spec 28 remain unchanged.
 
 ### 1. Requirement analysis
 
@@ -30,7 +30,7 @@ Expected behavior variants:
 - **T4 (R2, R3, R4, B1, B2, B3, B4, B6) — Affiliation-stage selection.** Adapter tests verify arXiv-first selection, DOI-only fallback, no request without IDs, partial results, per-author unknown states, and the paper-level unknown fallback. They also verify that no Semantic Scholar request occurs for an arXiv candidate.
 - **T5 (R5) — Authority-assessment bridge.** A newest-paper pipeline test sends a DOI-only Semantic Scholar candidate through affiliation collection and verifies that the authority assessor receives its names and institutions. A second test verifies the unchanged unknown input when Semantic Scholar returns no affiliations.
 - **T6 (R6) — Configuration.** Configuration tests verify API-key, proxy, pacing, retry, and backoff forwarding to the Comourat `SemanticScholarClient`.
-- **T7 (R7, R8) — Regression and documentation.** Existing arXiv affiliation and legacy collector tests pass. Documentation checks cover the new source behavior. The complete suite passes without live network access. Format, import-order, lint, and type checks on touched files introduce no new findings. The final report records unrelated findings that already exist on the base revision.
+- **T7 (R7, R8) — Regression and documentation.** Existing arXiv affiliation and legacy collector tests pass. Documentation checks cover the new source behavior. Spec 28 FR9 and AC6 record the replacement and remain consistent with this spec. The complete suite passes without live network access. Format, import-order, lint, and type checks on touched files introduce no new findings. The final report records unrelated findings that already exist on the base revision.
 
 ### 3. Implementation plan
 
@@ -97,6 +97,7 @@ Comourat owns Semantic Scholar transport and neutral data conversion. Mourat own
 | File | Action |
 |------|--------|
 | `.internal/specs/36-semantic-scholar-author-affiliations-kiss-spec.md` | New: requirements, tests, responsibility boundary, dependency commits, and implementation plan. |
+| `.internal/specs/28-semantic-scholar-newest-papers-general-spec.md` | Modified: replace the DOI-only no-fetch rule and no-request acceptance expectation with references to spec 36. |
 | `.internal/constitution-spec.md` | Modified: describe arXiv and Semantic Scholar affiliation sources in the newest-paper design. |
 | `.internal/terminology.md` | Modified: include Semantic Scholar author data in the author-affiliation definition. |
 | `mourat/collectors/arxiv_html_affiliations.py` | Modified: retain the single typed affiliation stage and add DOI-only source selection, author-batch fallback, partial-data conversion, and failure monitoring. |
