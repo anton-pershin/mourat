@@ -85,13 +85,13 @@ Comourat owns both provider clients and neutral records. Mourat owns source orde
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests.
-2. [ ] Run the focused tests and ensure that they fail.
-3. [ ] Integrate the merged Comourat OpenAlex neutral author records.
-4. [ ] Extend the existing affiliation stage with the OpenAlex fallback and monitoring.
-5. [ ] Add Hydra configuration and update the README, constitution, terminology, and earlier specs.
-6. [ ] Run focused tests, the complete suite, and all quality checks.
-7. [ ] Review the spec against the implementation, commit all changes, push the assigned branch, and open one draft pull request.
+1. [x] Write the tests.
+2. [x] Run the focused tests and ensure that they fail.
+3. [x] Integrate the merged Comourat OpenAlex neutral author records.
+4. [x] Extend the existing affiliation stage with the OpenAlex fallback and monitoring.
+5. [x] Add Hydra configuration and update the README, constitution, terminology, and earlier specs.
+6. [x] Run focused tests, the complete suite, and all quality checks.
+7. [x] Review the spec against the implementation, commit all changes, push the assigned branch, and open one draft pull request.
 
 #### 3.4 Modification summary
 

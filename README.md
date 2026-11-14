@@ -179,12 +179,17 @@ ledger, identity merging, and persistence.
 - Relevance triage is a batched boolean filter over research questions, technical
   challenges, and research topics. Constraints do not participate in triage.
 - The affiliation fetcher reads arXiv HTML when a candidate has an arXiv ID. For a
-  DOI-only Semantic Scholar candidate, it sends the retained author IDs to the
-  Semantic Scholar author-batch endpoint. The authority assessor receives the author
-  names and available institutions. Partial results retain known institutions and
-  mark authors without data as unknown. Missing IDs, empty results, and terminal
-  request failures retain unknown affiliations. The authority assessor gives an
-  LLM-based influence score from 0 to 100.
+  DOI-only Semantic Scholar candidate, it first sends the retained author IDs to the
+  Semantic Scholar author-batch endpoint. If that source supplies no usable
+  affiliations because IDs are missing, lists are empty, or the request fails, the
+  enabled OpenAlex fallback resolves the DOI once. Comourat supplies institution
+  names and raw affiliation strings from the paper's OpenAlex author records. Any
+  usable Semantic Scholar result, including a partial result, prevents the OpenAlex
+  request. The candidate's author names stay unchanged. Partial results retain known
+  institutions and mark authors without data as unknown. Affiliations remain unknown
+  only when no enabled source supplies usable data. The authority assessor receives
+  the author names and available institutions and gives an LLM-based influence score
+  from 0 to 100.
 - The scorer gives a relevance score from 0 to 100 for each configured research
   attribute. Constraints contribute to the filtering score. At least one research
   question, technical challenge, or research topic ID must resolve.
@@ -196,7 +201,13 @@ feeds, research-attribute IDs, model roles, relevance threshold, and writers.
 `config/semantic_scholar_newest/default.yaml` controls queries, API access, retries,
 the publication window, and pagination. `config/arxiv_html_affiliations/default.yaml`
 reuses the Semantic Scholar API key, proxy, timeout, pacing, retry, backoff, and jitter
-settings for author-batch requests. For example:
+settings for author-batch requests. Its `openalex_enabled` setting controls the
+OpenAlex fallback and defaults to true. The `openalex_user_agent`,
+`openalex_api_key`, `openalex_timeout_seconds`, `openalex_max_retries`,
+`openalex_backoff_seconds`, and `openalex_regular_delay_seconds` settings control the
+bounded Comourat DOI lookup. The API key comes from `OPENALEX_API_KEY`. Monitoring
+reports each source's results and failures and the final number of unknown papers.
+For example:
 
 ```bash
 python -m mourat.scripts.collect_newest_papers \
