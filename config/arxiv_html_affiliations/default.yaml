@@ -11,3 +11,12 @@ semantic_scholar_max_retries: ${semantic_scholar_newest.max_retries}
 semantic_scholar_backoff_seconds: ${semantic_scholar_newest.backoff_seconds}
 semantic_scholar_regular_delay_seconds: ${semantic_scholar_newest.regular_delay_seconds}
 semantic_scholar_jitter_seconds: ${semantic_scholar_newest.jitter_seconds}
+
+# Use one bounded OpenAlex DOI lookup when Semantic Scholar has no usable data.
+openalex_enabled: true
+openalex_user_agent: "mourat/0.1 (mailto:contact@example.com)"
+openalex_api_key: ${user_settings.openalex_api_key}
+openalex_timeout_seconds: 30.0
+openalex_max_retries: 4
+openalex_backoff_seconds: 2.0
+openalex_regular_delay_seconds: 2.0

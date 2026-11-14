@@ -102,10 +102,12 @@ def test_newest_pipeline_does_not_use_retired_classifier_description() -> None:
     assert "default: 4" not in section
 
 
-def test_newest_pipeline_documents_semantic_scholar_affiliations() -> None:
+def test_newest_pipeline_documents_affiliation_fallbacks() -> None:
     section = _script_section("collect_newest_papers")
     assert "author-batch" in section
     assert "arXiv HTML" in section
+    assert "OpenAlex" in section
+    assert "openalex_enabled" in section
     assert "DOI-only papers retain unknown affiliations" not in section
 
 
