@@ -293,8 +293,8 @@ class PaperCandidate(_ComouratPaperCandidate):
     affiliations: dict[str, list[str]] | None = Field(
         default=None,
         description=(
-            "In-flight author -> affiliation pairs fetched deterministically; None "
-            "when unknown (no HTML render or no affiliation nodes)"
+            "In-flight author -> affiliation pairs; None when no source has usable "
+            "data. Partial results use 'unknown' for authors without data."
         ),
     )
     announce_type: str | None = Field(

@@ -178,8 +178,12 @@ ledger, identity merging, and persistence.
   an existing database automatically.
 - Relevance triage is a batched boolean filter over research questions, technical
   challenges, and research topics. Constraints do not participate in triage.
-- The affiliation fetcher reads arXiv HTML only when a candidate has an arXiv ID.
-  DOI-only papers retain unknown affiliations. The authority assessor gives an
+- The affiliation fetcher reads arXiv HTML when a candidate has an arXiv ID. For a
+  DOI-only Semantic Scholar candidate, it sends the retained author IDs to the
+  Semantic Scholar author-batch endpoint. The authority assessor receives the author
+  names and available institutions. Partial results retain known institutions and
+  mark authors without data as unknown. Missing IDs, empty results, and terminal
+  request failures retain unknown affiliations. The authority assessor gives an
   LLM-based influence score from 0 to 100.
 - The scorer gives a relevance score from 0 to 100 for each configured research
   attribute. Constraints contribute to the filtering score. At least one research
@@ -190,7 +194,9 @@ ledger, identity merging, and persistence.
 **Configuration:** `config/config_collect_newest_papers.yaml` controls the sources,
 feeds, research-attribute IDs, model roles, relevance threshold, and writers.
 `config/semantic_scholar_newest/default.yaml` controls queries, API access, retries,
-the publication window, and pagination. For example:
+the publication window, and pagination. `config/arxiv_html_affiliations/default.yaml`
+reuses the Semantic Scholar API key, proxy, timeout, pacing, retry, backoff, and jitter
+settings for author-batch requests. For example:
 
 ```bash
 python -m mourat.scripts.collect_newest_papers \

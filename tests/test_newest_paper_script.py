@@ -112,10 +112,12 @@ AFFIL_HTML = """
 """
 
 
-def _llm_factory(scripted):
+def _llm_factory(scripted, prompts=None):
     """FunctionModel factory that pops the next scripted JSON per call."""
 
     def model_fn(messages, agent):
+        if prompts is not None:
+            prompts.append(messages[-1].parts[-1].content)
         return ModelResponse(parts=[TextPart(scripted.pop(0))])
 
     return FunctionModel(model_fn)
@@ -437,8 +439,15 @@ class _SemanticScholarResponse:
 
 
 def _run_semantic_scholar_script(
-    tmp_path, monkeypatch, output_path=None, fail_db_write=False
+    tmp_path,
+    monkeypatch,
+    output_path=None,
+    fail_db_write=False,
+    author_affiliations=("Famous Lab",),
+    prompts=None,
 ):
+    monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
+    monkeypatch.delenv("SEMANTIC_SCHOLAR_PROXY", raising=False)
     conn, dbfile = _init_db(tmp_path)
     conn.close()
     output_path = output_path or tmp_path / "out.jsonl"
@@ -488,7 +497,7 @@ def _run_semantic_scholar_script(
                 "abstract": "A journal method for KV cache optimization",
                 "citationCount": 0,
                 "publicationDate": "2024-01-02",
-                "authors": [{"name": "J. Smith"}],
+                "authors": [{"authorId": "author-j-smith", "name": "J. Smith"}],
                 "externalIds": {"DOI": "10.1234/JOURNAL"},
             }
         ],
@@ -499,6 +508,30 @@ def _run_semantic_scholar_script(
         _SemanticScholarResponse(payload)
         if url == "http://fake/ss/paper/search/bulk"
         else (_ for _ in ()).throw(AssertionError(f"unexpected URL: {url}"))
+    )
+    fake_client.post.side_effect = lambda url, **kwargs: (
+        _SemanticScholarResponse(
+            [
+                {
+                    "authorId": "author-j-smith",
+                    "name": "J. Smith",
+                    "affiliations": list(author_affiliations),
+                }
+            ]
+        )
+        if url == "http://fake/ss/author/batch"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected URL: {url}"))
+    )
+
+    from comourat.clients.semantic_scholar import SemanticScholarClient
+
+    def make_semantic_scholar_client(**kwargs):
+        return SemanticScholarClient(http_client=fake_client, **kwargs)
+
+    monkeypatch.setattr(
+        "mourat.collectors.arxiv_html_affiliations.SemanticScholarClient",
+        make_semantic_scholar_client,
+        raising=False,
     )
 
     from types import SimpleNamespace
@@ -520,7 +553,7 @@ def _run_semantic_scholar_script(
     def smart_instantiate(cfg_node, *args, **kwargs):
         target = cfg_node.get("_target_", "") if hasattr(cfg_node, "get") else ""
         if target.endswith(("OpenAIChatModel", "OpenAIResponsesModel")):
-            return _llm_factory(scripted)
+            return _llm_factory(scripted, prompts)
         return real_instantiate(cfg_node, *args, **kwargs)
 
     monkeypatch.setattr(_hydra.utils, "instantiate", smart_instantiate)
@@ -542,8 +575,9 @@ def _run_semantic_scholar_script(
 def test_semantic_scholar_only_reaches_shared_tail_and_records_ledger(
     tmp_path, monkeypatch
 ):
+    prompts = []
     dbfile, output_path, fake_client = _run_semantic_scholar_script(
-        tmp_path, monkeypatch
+        tmp_path, monkeypatch, prompts=prompts
     )
 
     records = [json.loads(line) for line in output_path.read_text().splitlines()]
@@ -553,6 +587,17 @@ def test_semantic_scholar_only_reaches_shared_tail_and_records_ledger(
         call.args[0] == "http://fake/ss/paper/search/bulk"
         for call in fake_client.get.call_args_list
     )
+    fake_client.post.assert_called_once_with(
+        "http://fake/ss/author/batch",
+        params={"fields": "name,affiliations"},
+        headers={},
+        timeout=30.0,
+        json={"ids": ["author-j-smith"]},
+    )
+    authority_prompt = prompts[1]
+    assert "\"authors\": ['J. Smith']" in authority_prompt
+    assert "J. Smith: Famous Lab" in authority_prompt
+    assert '"affiliations": "unknown"' not in authority_prompt
 
     from mourat.database import content_item as ci
     from mourat.database import init_db
@@ -564,6 +609,22 @@ def test_semantic_scholar_only_reaches_shared_tail_and_records_ledger(
     assert item["influence_score"] == 88
     assert list_semantic_scholar_ledger_ids(conn) == {"ss-journal"}
     conn.close()
+
+
+def test_semantic_scholar_without_affiliations_keeps_unknown_authority_input(
+    tmp_path, monkeypatch
+):
+    prompts = []
+
+    _run_semantic_scholar_script(
+        tmp_path,
+        monkeypatch,
+        author_affiliations=(),
+        prompts=prompts,
+    )
+
+    assert "\"authors\": ['J. Smith']" in prompts[1]
+    assert '"affiliations": "unknown"' in prompts[1]
 
 
 def test_both_sources_write_combined_output_with_arxiv_precedence(
@@ -793,6 +854,38 @@ def test_source_selection_rejects_invalid_values(sources):
 
     with pytest.raises(ValueError):
         _selected_sources(OmegaConf.create({"sources": sources}))
+
+
+def test_affiliation_configuration_reuses_semantic_scholar_transport(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "test-key")
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_PROXY", "http://proxy.example:8080")
+    conn, dbfile = _init_db(tmp_path)
+    conn.close()
+
+    cfg = _hydra_cfg(
+        tmp_path,
+        dbfile,
+        overrides=[
+            "semantic_scholar_newest.api_url=http://fake/ss",
+            "semantic_scholar_newest.timeout_seconds=12.5",
+            "semantic_scholar_newest.max_retries=7",
+            "semantic_scholar_newest.backoff_seconds=3.0",
+            "semantic_scholar_newest.regular_delay_seconds=0.0",
+            "semantic_scholar_newest.jitter_seconds=0.25",
+        ],
+    )
+
+    affiliation = cfg.arxiv_html_affiliations
+    assert affiliation.semantic_scholar_api_url == "http://fake/ss"
+    assert affiliation.semantic_scholar_api_key == "test-key"
+    assert affiliation.semantic_scholar_proxy == "http://proxy.example:8080"
+    assert affiliation.semantic_scholar_timeout_seconds == 12.5
+    assert affiliation.semantic_scholar_max_retries == 7
+    assert affiliation.semantic_scholar_backoff_seconds == 3.0
+    assert affiliation.semantic_scholar_regular_delay_seconds == 0.0
+    assert affiliation.semantic_scholar_jitter_seconds == 0.25
 
 
 def test_default_configuration_selects_both_sources(tmp_path):

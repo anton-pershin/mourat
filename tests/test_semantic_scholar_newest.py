@@ -175,7 +175,14 @@ def test_adapter_delegates_to_comourat_and_reports_query_results(monkeypatch):
 
 def test_adapter_uses_the_real_comourat_publication_window_contract():
     http = MagicMock()
-    http.get.return_value = _response({"data": [_paper()], "token": None})
+    paper = _paper()
+    paper["authors"] = [
+        {"authorId": "author-1", "name": "First Author"},
+        {"name": "Second Author"},
+        {"authorId": None, "name": "Third Author"},
+        {"authorId": "excluded-author"},
+    ]
+    http.get.return_value = _response({"data": [paper], "token": None})
     result = _collector(http, api_key="secret-test-key")({}, "1")
 
     assert len(result.papers) == 1
@@ -184,6 +191,8 @@ def test_adapter_uses_the_real_comourat_publication_window_contract():
     assert first.doi == "10.1234/journal"
     assert first.provenance == ["semantic_scholar"]
     assert first.publication_date == "2024-01-02"
+    assert first.authors == ["First Author", "Second Author", "Third Author"]
+    assert first.author_ids == ["author-1", None, None]
     call = http.get.call_args
     assert call.args[0].endswith("/paper/search/bulk")
     assert call.kwargs["headers"]["x-api-key"] == "secret-test-key"
@@ -309,6 +318,22 @@ def test_semantic_scholar_only_requires_provider_id_and_non_arxiv_doi():
     assert result.missing_doi_excluded == 2
     assert result.missing_provider_id_excluded == 1
     assert result.new_semantic_scholar_ids == ["ss-1", "ss-2", "ss-3"]
+
+
+def test_merge_preserves_semantic_scholar_author_ids_for_doi_only_candidates():
+    semantic = _candidate(
+        "DOI-only",
+        doi="10.1234/doi-only",
+        provider_id="ss-doi-only",
+        provenance=["semantic_scholar"],
+    )
+    semantic.authors = ["First Author", "Second Author"]
+    semantic.author_ids = ["author-1", None]
+
+    result = _merge(semantic_scholar=[semantic])
+
+    assert result.collection.papers[0].authors == ["First Author", "Second Author"]
+    assert result.collection.papers[0].author_ids == ["author-1", None]
 
 
 def test_semantic_scholar_without_doi_can_match_arxiv_candidate():
