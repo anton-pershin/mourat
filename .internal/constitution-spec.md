@@ -88,6 +88,8 @@ flowchart LR
 
 Newest-paper sources have different date semantics. arXiv uses RSS announcements and can retain only new submissions. Semantic Scholar uses bibliographic publication dates in a configured delayed window. Its publication date does not show when Semantic Scholar indexed the paper. Optional backfill and the collection ledger support repeated runs.
 
+The affiliation map reads arXiv HTML when a candidate has an arXiv ID. For a DOI-only Semantic Scholar candidate, it uses retained author IDs to obtain affiliations from the Semantic Scholar author-batch endpoint. Authority assessment receives available author and institution data. Missing affiliations remain unknown.
+
 collect_influential_papers_from_scratch.py — Influential papers from scratch
 
 ```mermaid

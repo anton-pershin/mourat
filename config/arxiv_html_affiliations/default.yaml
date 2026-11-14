@@ -1,3 +1,13 @@
 _target_: mourat.collectors.arxiv_html_affiliations.ArxivHtmlAffiliationFetcher
 _partial_: true  # expect positional arguments: monitoring_handler, http_client
 request_delay_seconds: 1.0
+
+# Reuse Semantic Scholar transport settings for DOI-only author affiliations.
+semantic_scholar_api_url: ${semantic_scholar_newest.api_url}
+semantic_scholar_api_key: ${semantic_scholar_newest.api_key}
+semantic_scholar_proxy: ${semantic_scholar_newest.proxy}
+semantic_scholar_timeout_seconds: ${semantic_scholar_newest.timeout_seconds}
+semantic_scholar_max_retries: ${semantic_scholar_newest.max_retries}
+semantic_scholar_backoff_seconds: ${semantic_scholar_newest.backoff_seconds}
+semantic_scholar_regular_delay_seconds: ${semantic_scholar_newest.regular_delay_seconds}
+semantic_scholar_jitter_seconds: ${semantic_scholar_newest.jitter_seconds}

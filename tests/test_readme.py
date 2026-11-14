@@ -102,6 +102,13 @@ def test_newest_pipeline_does_not_use_retired_classifier_description() -> None:
     assert "default: 4" not in section
 
 
+def test_newest_pipeline_documents_semantic_scholar_affiliations() -> None:
+    section = _script_section("collect_newest_papers")
+    assert "author-batch" in section
+    assert "arXiv HTML" in section
+    assert "DOI-only papers retain unknown affiliations" not in section
+
+
 def test_readme_describes_shared_architecture_and_operation() -> None:
     """The README identifies shared modules and basic operating controls."""
     required_text = (

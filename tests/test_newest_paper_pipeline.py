@@ -11,6 +11,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from comourat.models import AuthorRecord
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
@@ -52,6 +53,17 @@ def _make_collection(n=3, with_ids=True) -> PaperCandidateCollection:
             )
         )
     return PaperCandidateCollection(papers=papers)
+
+
+def _make_doi_only_semantic_scholar_collection() -> PaperCandidateCollection:
+    collection = _make_collection(1, with_ids=False)
+    paper = collection.papers[0]
+    paper.title = "DOI-only Semantic Scholar paper"
+    paper.authors = ["Alice Smith", "Bob Jones", "Carol Brown"]
+    paper.author_ids = ["alice-id", None, "carol-id"]
+    paper.doi = "10.1234/doi-only"
+    paper.provenance = ["semantic_scholar"]
+    return collection
 
 
 def _ids_in_prompt(prompt: str) -> list[str]:
@@ -112,7 +124,11 @@ class TestExtractAffiliations:
 
 
 class TestArxivHtmlAffiliationFetcher:
-    def _fetcher(self, responses: dict[str, object]):
+    def _fetcher(
+        self,
+        responses: dict[str, object],
+        semantic_scholar_client=None,
+    ):
         client = MagicMock()
 
         def get(url, params=None):
@@ -134,6 +150,7 @@ class TestArxivHtmlAffiliationFetcher:
             monitoring_handler=_make_monitoring_handler(),
             http_client=client,
             request_delay_seconds=0.0,
+            semantic_scholar_client=semantic_scholar_client or MagicMock(),
         )
 
     def test_attaches_affiliations(self):
@@ -203,6 +220,159 @@ class TestArxivHtmlAffiliationFetcher:
         coll = _make_collection(1, with_ids=False)
         result = fetcher(coll, "t")
         assert result.papers[0].affiliations is None
+
+    def test_doi_only_semantic_scholar_uses_available_affiliations(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = [
+            AuthorRecord(
+                author_id="alice-id",
+                name="",
+                affiliations=["Allen Institute", "Example University"],
+            ),
+            AuthorRecord(
+                author_id="carol-id",
+                name="Carol Brown",
+                affiliations=["Example Lab"],
+            ),
+        ]
+        fetcher = self._fetcher({}, semantic_scholar)
+        coll = _make_doi_only_semantic_scholar_collection()
+
+        result, monitoring = _run_with_handler(fetcher, coll)
+
+        paper = result.papers[0]
+        assert paper.authors == ["Alice Smith", "Bob Jones", "Carol Brown"]
+        assert paper.affiliations == {
+            "Alice Smith": ["Allen Institute", "Example University"],
+            "Bob Jones": ["unknown"],
+            "Carol Brown": ["Example Lab"],
+        }
+        semantic_scholar.get_authors.assert_called_once_with(["alice-id", "carol-id"])
+        assert "Semantic Scholar DOI-only papers: 1" in monitoring
+        assert "with affiliations: 1" in monitoring
+
+    def test_doi_only_partial_response_preserves_known_data_and_unknown_states(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = [
+            AuthorRecord(
+                author_id="alice-id",
+                name="Alice Smith",
+                affiliations=["Allen Institute"],
+            ),
+            AuthorRecord(
+                author_id="carol-id",
+                name="Carol Brown",
+                affiliations=[],
+            ),
+        ]
+        fetcher = self._fetcher({}, semantic_scholar)
+        coll = _make_doi_only_semantic_scholar_collection()
+
+        result = fetcher(coll, "t")
+
+        assert result.papers[0].affiliations == {
+            "Alice Smith": ["Allen Institute"],
+            "Bob Jones": ["unknown"],
+            "Carol Brown": ["unknown"],
+        }
+
+    def test_doi_only_without_author_ids_makes_no_request(self):
+        semantic_scholar = MagicMock()
+        fetcher = self._fetcher({}, semantic_scholar)
+        coll = _make_doi_only_semantic_scholar_collection()
+        coll.papers[0].author_ids = [None, None, None]
+
+        result = fetcher(coll, "t")
+
+        assert result.papers[0].affiliations is None
+        semantic_scholar.get_authors.assert_not_called()
+        fetcher.core.http_client.get.assert_not_called()
+
+    def test_doi_only_without_returned_affiliations_retains_unknown(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = [
+            AuthorRecord(
+                author_id="alice-id",
+                name="Alice Smith",
+                affiliations=[],
+            )
+        ]
+        fetcher = self._fetcher({}, semantic_scholar)
+
+        result = fetcher(_make_doi_only_semantic_scholar_collection(), "t")
+
+        assert result.papers[0].affiliations is None
+
+    def test_doi_only_terminal_failure_retains_unknown_and_reports_title(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.side_effect = RuntimeError("provider unavailable")
+        fetcher = self._fetcher({}, semantic_scholar)
+        coll = _make_doi_only_semantic_scholar_collection()
+
+        with patch("mourat.collectors.arxiv_html_affiliations.logger.warning") as warn:
+            result, monitoring = _run_with_handler(fetcher, coll)
+
+        assert result.papers[0].affiliations is None
+        assert warn.called
+        assert "Semantic Scholar affiliation failures: 1" in monitoring
+        assert "DOI-only Semantic Scholar paper" in monitoring
+
+    def test_arxiv_candidate_never_uses_semantic_scholar_fallback(self):
+        semantic_scholar = MagicMock()
+        url = "https://arxiv.org/html/2401.00000v1"
+        fetcher = self._fetcher({url: AFFIL_HTML}, semantic_scholar)
+        coll = _make_collection(1)
+        coll.papers[0].doi = "10.1234/shared"
+        coll.papers[0].author_ids = ["semantic-scholar-author"]
+        coll.papers[0].provenance = ["arxiv", "semantic_scholar"]
+
+        result = fetcher(coll, "t")
+
+        assert result.papers[0].affiliations == {
+            "Alice Smith": ["University of Somewhere"],
+            "Bob Jones": ["Famous Lab", "Other Institute"],
+        }
+        semantic_scholar.get_authors.assert_not_called()
+
+    def test_doi_only_candidate_from_another_source_is_not_sent_to_semantic_scholar(
+        self,
+    ):
+        semantic_scholar = MagicMock()
+        fetcher = self._fetcher({}, semantic_scholar)
+        coll = _make_doi_only_semantic_scholar_collection()
+        coll.papers[0].provenance = ["web_search"]
+
+        result = fetcher(coll, "t")
+
+        assert result.papers[0].affiliations is None
+        semantic_scholar.get_authors.assert_not_called()
+
+
+@patch("mourat.collectors.arxiv_html_affiliations.SemanticScholarClient")
+def test_semantic_scholar_client_receives_explicit_transport_configuration(factory):
+    ArxivHtmlAffiliationFetcher(
+        monitoring_handler=_make_monitoring_handler(),
+        http_client=MagicMock(),
+        semantic_scholar_api_url="http://fake/ss/",
+        semantic_scholar_api_key="test-key",
+        semantic_scholar_proxy="http://proxy.example:8080",
+        semantic_scholar_timeout_seconds=12.5,
+        semantic_scholar_max_retries=7,
+        semantic_scholar_backoff_seconds=3.0,
+        semantic_scholar_regular_delay_seconds=0.0,
+        semantic_scholar_jitter_seconds=0.25,
+    )
+
+    factory.assert_called_once_with(
+        api_url="http://fake/ss",
+        api_key="test-key",
+        proxy="http://proxy.example:8080",
+        timeout_seconds=12.5,
+        max_retries=7,
+        backoff_seconds=3.0,
+        regular_delay_seconds=0.0,
+        jitter_seconds=0.25,
+    )
 
 
 # --- RelevanceTriageClassifier (R9: T16-T21) ---
