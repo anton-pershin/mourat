@@ -33,7 +33,7 @@
 | New submission | An arXiv RSS entry announced as new, rather than as a replacement or cross-listing. |
 | Semantic Scholar publication window | An inclusive range of bibliographic publication dates used for Semantic Scholar collection. It is not an ingestion-date range and has no arXiv announce-type equivalent. |
 | Relevance triage | A preliminary boolean assessment of whether a paper is plausibly relevant to at least one specified research question, technical challenge, or research topic. Constraints are excluded. |
-| Author affiliation | An institution associated with an author, obtained from the paper's arXiv HTML page or Semantic Scholar author data. Missing data remains unknown. |
+| Author affiliation | An institution associated with an author, obtained from arXiv HTML, Semantic Scholar author data, or OpenAlex paper metadata. DOI-only papers use Semantic Scholar before the optional OpenAlex fallback. Missing data remains unknown when no enabled source supplies usable data. |
 | Authority influence | An LLM assessment of author and institution authority, recorded as the paper's influence score. |
 | Canonical paper identity | The normalized arXiv identifier, or the normalized DOI when no arXiv identifier is available, used to deduplicate a paper across sources and runs. |
 | Collection ledger | The SQLite record of Semantic Scholar provider paper IDs that completed a newest-paper run. It prevents repeated processing during overlapping collection windows. |

@@ -1,12 +1,12 @@
 """Collect newest papers from configured sources, process them, and write output.
 
-Entry point for the newest-papers paper collection pipeline (specs 14, 28, and 36):
+Entry point for the newest-papers paper collection pipeline (specs 14, 28, 36, and 38):
 
     research attributes (loaded from the DB by configured id)
       -> arXiv RSS and/or Semantic Scholar publication-date collectors
       -> canonical identity merge with arXiv precedence
       -> RelevanceTriageClassifier (cheap batched boolean filter)
-      -> ArxivHtmlAffiliationFetcher (arXiv HTML or Semantic Scholar authors)
+      -> ArxivHtmlAffiliationFetcher (arXiv HTML, Semantic Scholar, or OpenAlex)
       -> AuthorityInfluenceAssessor (batched 0-100 authority score)
       -> CandidateToResolvedConverter (candidate -> ResolvedPaper)
       -> PaperContentItemScorer (0-100 vs every supplied attribute)
@@ -327,7 +327,7 @@ def collect_newest_papers_main(cfg: DictConfig) -> None:
     )
     candidates = triage(candidates, step_id=step_id)
 
-    # Step 3: affiliations from arXiv HTML or Semantic Scholar author data
+    # Step 3: arXiv HTML, then Semantic Scholar and OpenAlex for DOI-only papers
     step_id = "3"
     fetcher = hydra.utils.instantiate(cfg.arxiv_html_affiliations)(
         monitoring_handler, http_client

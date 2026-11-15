@@ -444,6 +444,7 @@ def _run_semantic_scholar_script(
     output_path=None,
     fail_db_write=False,
     author_affiliations=("Famous Lab",),
+    openalex_authorships=None,
     prompts=None,
 ):
     monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
@@ -463,6 +464,8 @@ def _run_semantic_scholar_script(
             "semantic_scholar_newest.regular_delay_seconds=0",
             "semantic_scholar_newest.backoff_seconds=0",
             "semantic_scholar_newest.jitter_seconds=0",
+            "++arxiv_html_affiliations.openalex_regular_delay_seconds=0",
+            "++arxiv_html_affiliations.openalex_backoff_seconds=0",
         ],
     )
     scripted = [
@@ -503,12 +506,27 @@ def _run_semantic_scholar_script(
         ],
         "token": None,
     }
+    openalex_results = []
+    if openalex_authorships is not None:
+        openalex_results = [
+            {
+                "id": "https://openalex.org/W1",
+                "doi": "https://doi.org/10.1234/JOURNAL",
+                "display_name": "KV Cache Journal Paper",
+                "locations": [],
+                "authorships": openalex_authorships,
+            }
+        ]
     fake_client = MagicMock()
-    fake_client.get.side_effect = lambda url, **kwargs: (
-        _SemanticScholarResponse(payload)
-        if url == "http://fake/ss/paper/search/bulk"
-        else (_ for _ in ()).throw(AssertionError(f"unexpected URL: {url}"))
-    )
+
+    def get_side_effect(url, **kwargs):
+        if url == "http://fake/ss/paper/search/bulk":
+            return _SemanticScholarResponse(payload)
+        if url == "https://api.openalex.org/works":
+            return _SemanticScholarResponse({"meta": {}, "results": openalex_results})
+        raise AssertionError(f"unexpected URL: {url}")
+
+    fake_client.get.side_effect = get_side_effect
     fake_client.post.side_effect = lambda url, **kwargs: (
         _SemanticScholarResponse(
             [
@@ -531,6 +549,17 @@ def _run_semantic_scholar_script(
     monkeypatch.setattr(
         "mourat.collectors.arxiv_html_affiliations.SemanticScholarClient",
         make_semantic_scholar_client,
+        raising=False,
+    )
+
+    from comourat.clients.openalex import OpenAlexClient
+
+    def make_openalex_client(**kwargs):
+        return OpenAlexClient(http_client=fake_client, **kwargs)
+
+    monkeypatch.setattr(
+        "mourat.collectors.arxiv_html_affiliations.OpenAlexClient",
+        make_openalex_client,
         raising=False,
     )
 
@@ -625,6 +654,34 @@ def test_semantic_scholar_without_affiliations_keeps_unknown_authority_input(
 
     assert "\"authors\": ['J. Smith']" in prompts[1]
     assert '"affiliations": "unknown"' in prompts[1]
+
+
+def test_openalex_affiliations_reach_authority_when_semantic_scholar_is_empty(
+    tmp_path, monkeypatch
+):
+    prompts = []
+
+    _run_semantic_scholar_script(
+        tmp_path,
+        monkeypatch,
+        author_affiliations=(),
+        openalex_authorships=[
+            {
+                "author": {
+                    "id": "https://openalex.org/A1",
+                    "display_name": "J. Smith",
+                },
+                "institutions": [{"display_name": "OpenAlex University"}],
+                "raw_affiliation_strings": ["OpenAlex Raw Lab"],
+            }
+        ],
+        prompts=prompts,
+    )
+
+    authority_prompt = prompts[1]
+    assert "\"authors\": ['J. Smith']" in authority_prompt
+    assert "J. Smith: OpenAlex University, OpenAlex Raw Lab" in authority_prompt
+    assert '"affiliations": "unknown"' not in authority_prompt
 
 
 def test_both_sources_write_combined_output_with_arxiv_precedence(
@@ -748,6 +805,13 @@ def test_both_sources_write_combined_output_with_arxiv_precedence(
             Timeout=real_httpx.Timeout,
         ),
     )
+    openalex = MagicMock()
+    openalex.resolve_by_doi.return_value = None
+    monkeypatch.setattr(
+        "mourat.collectors.arxiv_html_affiliations.OpenAlexClient",
+        lambda **kwargs: openalex,
+        raising=False,
+    )
     import hydra as _hydra
 
     real_instantiate = _hydra.utils.instantiate
@@ -856,11 +920,12 @@ def test_source_selection_rejects_invalid_values(sources):
         _selected_sources(OmegaConf.create({"sources": sources}))
 
 
-def test_affiliation_configuration_reuses_semantic_scholar_transport(
+def test_affiliation_configuration_forwards_both_provider_transports(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "test-key")
     monkeypatch.setenv("SEMANTIC_SCHOLAR_PROXY", "http://proxy.example:8080")
+    monkeypatch.setenv("OPENALEX_API_KEY", "openalex-test-key")
     conn, dbfile = _init_db(tmp_path)
     conn.close()
 
@@ -874,6 +939,12 @@ def test_affiliation_configuration_reuses_semantic_scholar_transport(
             "semantic_scholar_newest.backoff_seconds=3.0",
             "semantic_scholar_newest.regular_delay_seconds=0.0",
             "semantic_scholar_newest.jitter_seconds=0.25",
+            "++arxiv_html_affiliations.openalex_enabled=false",
+            "++arxiv_html_affiliations.openalex_user_agent=mourat-test/0.1",
+            "++arxiv_html_affiliations.openalex_timeout_seconds=14.5",
+            "++arxiv_html_affiliations.openalex_max_retries=6",
+            "++arxiv_html_affiliations.openalex_backoff_seconds=4.0",
+            "++arxiv_html_affiliations.openalex_regular_delay_seconds=1.5",
         ],
     )
 
@@ -886,6 +957,13 @@ def test_affiliation_configuration_reuses_semantic_scholar_transport(
     assert affiliation.semantic_scholar_backoff_seconds == 3.0
     assert affiliation.semantic_scholar_regular_delay_seconds == 0.0
     assert affiliation.semantic_scholar_jitter_seconds == 0.25
+    assert affiliation.openalex_enabled is False
+    assert affiliation.openalex_user_agent == "mourat-test/0.1"
+    assert affiliation.openalex_api_key == "openalex-test-key"
+    assert affiliation.openalex_timeout_seconds == 14.5
+    assert affiliation.openalex_max_retries == 6
+    assert affiliation.openalex_backoff_seconds == 4.0
+    assert affiliation.openalex_regular_delay_seconds == 1.5
 
 
 def test_default_configuration_selects_both_sources(tmp_path):
@@ -907,4 +985,11 @@ def test_default_configuration_selects_both_sources(tmp_path):
     assert cfg.semantic_scholar_newest.lag_days == 30
     assert cfg.semantic_scholar_newest.stride_days == 1
     assert cfg.semantic_scholar_newest.backfill_days == 0
+    affiliation = cfg.arxiv_html_affiliations
+    assert affiliation.openalex_enabled is True
+    assert affiliation.openalex_user_agent == "mourat/0.1 (mailto:contact@example.com)"
+    assert affiliation.openalex_timeout_seconds == 30.0
+    assert affiliation.openalex_max_retries == 4
+    assert affiliation.openalex_backoff_seconds == 2.0
+    assert affiliation.openalex_regular_delay_seconds == 2.0
     assert cfg.semantic_scholar_newest.max_results_per_query is None

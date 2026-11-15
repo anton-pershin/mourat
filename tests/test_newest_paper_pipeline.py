@@ -11,7 +11,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from comourat.models import AuthorRecord
+from comourat.models import AuthorRecord, PaperRecord
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
@@ -128,8 +128,13 @@ class TestArxivHtmlAffiliationFetcher:
         self,
         responses: dict[str, object],
         semantic_scholar_client=None,
+        openalex_client=None,
+        openalex_enabled=True,
     ):
         client = MagicMock()
+        if openalex_client is None:
+            openalex_client = MagicMock()
+            openalex_client.resolve_by_doi.return_value = None
 
         def get(url, params=None):
             r = MagicMock()
@@ -151,6 +156,8 @@ class TestArxivHtmlAffiliationFetcher:
             http_client=client,
             request_delay_seconds=0.0,
             semantic_scholar_client=semantic_scholar_client or MagicMock(),
+            openalex_client=openalex_client,
+            openalex_enabled=openalex_enabled,
         )
 
     def test_attaches_affiliations(self):
@@ -235,7 +242,8 @@ class TestArxivHtmlAffiliationFetcher:
                 affiliations=["Example Lab"],
             ),
         ]
-        fetcher = self._fetcher({}, semantic_scholar)
+        openalex = MagicMock()
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
         coll = _make_doi_only_semantic_scholar_collection()
 
         result, monitoring = _run_with_handler(fetcher, coll)
@@ -248,6 +256,7 @@ class TestArxivHtmlAffiliationFetcher:
             "Carol Brown": ["Example Lab"],
         }
         semantic_scholar.get_authors.assert_called_once_with(["alice-id", "carol-id"])
+        openalex.resolve_by_doi.assert_not_called()
         assert "Semantic Scholar DOI-only papers: 1" in monitoring
         assert "with affiliations: 1" in monitoring
 
@@ -265,7 +274,8 @@ class TestArxivHtmlAffiliationFetcher:
                 affiliations=[],
             ),
         ]
-        fetcher = self._fetcher({}, semantic_scholar)
+        openalex = MagicMock()
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
         coll = _make_doi_only_semantic_scholar_collection()
 
         result = fetcher(coll, "t")
@@ -275,10 +285,13 @@ class TestArxivHtmlAffiliationFetcher:
             "Bob Jones": ["unknown"],
             "Carol Brown": ["unknown"],
         }
+        openalex.resolve_by_doi.assert_not_called()
 
-    def test_doi_only_without_author_ids_makes_no_request(self):
+    def test_doi_only_without_author_ids_uses_openalex_not_semantic_scholar(self):
         semantic_scholar = MagicMock()
-        fetcher = self._fetcher({}, semantic_scholar)
+        openalex = MagicMock()
+        openalex.resolve_by_doi.return_value = None
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
         coll = _make_doi_only_semantic_scholar_collection()
         coll.papers[0].author_ids = [None, None, None]
 
@@ -286,9 +299,10 @@ class TestArxivHtmlAffiliationFetcher:
 
         assert result.papers[0].affiliations is None
         semantic_scholar.get_authors.assert_not_called()
+        openalex.resolve_by_doi.assert_called_once_with("10.1234/doi-only")
         fetcher.core.http_client.get.assert_not_called()
 
-    def test_doi_only_without_returned_affiliations_retains_unknown(self):
+    def test_doi_only_without_any_source_affiliations_retains_unknown(self):
         semantic_scholar = MagicMock()
         semantic_scholar.get_authors.return_value = [
             AuthorRecord(
@@ -297,11 +311,249 @@ class TestArxivHtmlAffiliationFetcher:
                 affiliations=[],
             )
         ]
-        fetcher = self._fetcher({}, semantic_scholar)
+        openalex = MagicMock()
+        openalex.resolve_by_doi.return_value = None
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
+
+        result, monitoring = _run_with_handler(
+            fetcher, _make_doi_only_semantic_scholar_collection()
+        )
+
+        assert result.papers[0].affiliations is None
+        openalex.resolve_by_doi.assert_called_once_with("10.1234/doi-only")
+        assert "OpenAlex fallback attempts: 1" in monitoring
+        assert "OpenAlex papers with affiliations: 0" in monitoring
+        assert "OpenAlex unresolved or empty results: 1" in monitoring
+        assert (
+            "DOI-only affiliations unknown after all enabled sources: 1" in monitoring
+        )
+
+    def test_openalex_fallback_supplies_affiliations_when_semantic_scholar_is_empty(
+        self,
+    ):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = [
+            AuthorRecord(author_id="alice-id", name="Alice Smith", affiliations=[])
+        ]
+        openalex = MagicMock()
+        openalex.resolve_by_doi.return_value = PaperRecord(
+            title="DOI-only Semantic Scholar paper",
+            authors=["Alice Smith", "Bob Jones", "Carol Brown"],
+            author_records=[
+                AuthorRecord(
+                    author_id="https://openalex.org/A1",
+                    name="Alice Smith",
+                    affiliations=["Beijing Institute of Technology", "Raw Lab A"],
+                ),
+                AuthorRecord(
+                    author_id=None,
+                    name="Bob Jones",
+                    affiliations=["Xidian University"],
+                ),
+                AuthorRecord(
+                    author_id="https://openalex.org/A3",
+                    name="Carol Brown",
+                    affiliations=["Example Institute"],
+                ),
+            ],
+        )
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
+        coll = _make_doi_only_semantic_scholar_collection()
+
+        result, monitoring = _run_with_handler(fetcher, coll)
+
+        paper = result.papers[0]
+        assert paper.authors == ["Alice Smith", "Bob Jones", "Carol Brown"]
+        assert paper.affiliations == {
+            "Alice Smith": ["Beijing Institute of Technology", "Raw Lab A"],
+            "Bob Jones": ["Xidian University"],
+            "Carol Brown": ["Example Institute"],
+        }
+        openalex.resolve_by_doi.assert_called_once_with("10.1234/doi-only")
+        assert "Semantic Scholar DOI-only papers: 1, with affiliations: 0" in monitoring
+        assert "OpenAlex fallback attempts: 1" in monitoring
+        assert "OpenAlex papers with affiliations: 1" in monitoring
+        assert (
+            "DOI-only affiliations unknown after all enabled sources: 0" in monitoring
+        )
+
+    def test_openalex_partial_response_preserves_known_data_and_unknown_states(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = []
+        openalex = MagicMock()
+        openalex.resolve_by_doi.return_value = PaperRecord(
+            title="DOI-only Semantic Scholar paper",
+            author_records=[
+                AuthorRecord(name="Alice Smith", affiliations=["Institute A"]),
+                AuthorRecord(name="Bob Jones", affiliations=[]),
+                AuthorRecord(name="OpenAlex Carol", affiliations=["Raw Lab C"]),
+            ],
+        )
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
+
+        result = fetcher(_make_doi_only_semantic_scholar_collection(), "t")
+
+        assert result.papers[0].authors == ["Alice Smith", "Bob Jones", "Carol Brown"]
+        assert result.papers[0].affiliations == {
+            "Alice Smith": ["Institute A"],
+            "Bob Jones": ["unknown"],
+            "Carol Brown": ["unknown"],
+            "OpenAlex Carol": ["Raw Lab C"],
+        }
+
+    @pytest.mark.parametrize(
+        "openalex_record",
+        [
+            PaperRecord(title="No authors", author_records=[]),
+            PaperRecord(
+                title="No affiliations",
+                author_records=[AuthorRecord(name="Alice Smith", affiliations=[])],
+            ),
+        ],
+    )
+    def test_openalex_without_usable_affiliations_retains_unknown(
+        self, openalex_record
+    ):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = []
+        openalex = MagicMock()
+        openalex.resolve_by_doi.return_value = openalex_record
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
 
         result = fetcher(_make_doi_only_semantic_scholar_collection(), "t")
 
         assert result.papers[0].affiliations is None
+
+    def test_semantic_scholar_failure_can_recover_through_openalex(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.side_effect = RuntimeError("provider unavailable")
+        openalex = MagicMock()
+        openalex.resolve_by_doi.return_value = PaperRecord(
+            title="DOI-only Semantic Scholar paper",
+            author_records=[
+                AuthorRecord(name="Alice Smith", affiliations=["Recovered Institute"])
+            ],
+        )
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
+
+        result, monitoring = _run_with_handler(
+            fetcher, _make_doi_only_semantic_scholar_collection()
+        )
+
+        assert result.papers[0].affiliations == {
+            "Alice Smith": ["Recovered Institute"],
+            "Bob Jones": ["unknown"],
+            "Carol Brown": ["unknown"],
+        }
+        assert "Semantic Scholar affiliation failures: 1" in monitoring
+        assert "OpenAlex papers with affiliations: 1" in monitoring
+
+    def test_openalex_terminal_failure_retains_unknown_and_reports_title(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = []
+        openalex = MagicMock()
+        openalex.resolve_by_doi.side_effect = RuntimeError("provider unavailable")
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
+
+        with patch("mourat.collectors.arxiv_html_affiliations.logger.warning") as warn:
+            result, monitoring = _run_with_handler(
+                fetcher, _make_doi_only_semantic_scholar_collection()
+            )
+
+        assert result.papers[0].affiliations is None
+        warn.assert_called_once()
+        assert "OpenAlex affiliation fetch failed" in warn.call_args.args[0]
+        assert "OpenAlex affiliation failures: 1" in monitoring
+        assert "DOI-only Semantic Scholar paper" in monitoring
+
+    def test_disabled_openalex_fallback_makes_no_request(self):
+        semantic_scholar = MagicMock()
+        semantic_scholar.get_authors.return_value = []
+        openalex = MagicMock()
+        fetcher = self._fetcher({}, semantic_scholar, openalex, openalex_enabled=False)
+
+        result, monitoring = _run_with_handler(
+            fetcher, _make_doi_only_semantic_scholar_collection()
+        )
+
+        assert result.papers[0].affiliations is None
+        openalex.resolve_by_doi.assert_not_called()
+        assert "OpenAlex fallback attempts: 0" in monitoring
+        assert (
+            "DOI-only affiliations unknown after all enabled sources: 1" in monitoring
+        )
+
+    def test_mixed_papers_keep_results_and_bound_openalex_calls(self):
+        semantic_scholar = MagicMock()
+
+        def get_authors(author_ids):
+            if author_ids == ["ss-success"]:
+                return [
+                    AuthorRecord(
+                        author_id="ss-success",
+                        name="Alice Smith",
+                        affiliations=["Semantic Scholar Institute"],
+                    )
+                ]
+            return []
+
+        semantic_scholar.get_authors.side_effect = get_authors
+        openalex = MagicMock()
+
+        def resolve_by_doi(doi):
+            if doi == "10.1234/openalex-success":
+                return PaperRecord(
+                    title="OpenAlex success",
+                    author_records=[
+                        AuthorRecord(
+                            name="Alice Smith", affiliations=["OpenAlex Institute"]
+                        )
+                    ],
+                )
+            if doi == "10.1234/openalex-failure":
+                raise RuntimeError("provider unavailable")
+            return None
+
+        openalex.resolve_by_doi.side_effect = resolve_by_doi
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
+        source_paper = _make_doi_only_semantic_scholar_collection().papers[0]
+        papers = []
+        for title, author_id, doi in [
+            ("Semantic Scholar success", "ss-success", "10.1234/ss-success"),
+            ("OpenAlex success", "ss-empty", "10.1234/openalex-success"),
+            ("OpenAlex unresolved", "ss-empty", "10.1234/openalex-unresolved"),
+            ("OpenAlex failure", "ss-empty", "10.1234/openalex-failure"),
+        ]:
+            paper = source_paper.model_copy(deep=True)
+            paper.title = title
+            paper.authors = ["Alice Smith"]
+            paper.author_ids = [author_id]
+            paper.doi = doi
+            papers.append(paper)
+
+        result, monitoring = _run_with_handler(
+            fetcher, PaperCandidateCollection(papers=papers)
+        )
+
+        assert [paper.affiliations for paper in result.papers] == [
+            {"Alice Smith": ["Semantic Scholar Institute"]},
+            {"Alice Smith": ["OpenAlex Institute"]},
+            None,
+            None,
+        ]
+        assert openalex.resolve_by_doi.call_count == 3
+        assert [call.args[0] for call in openalex.resolve_by_doi.call_args_list] == [
+            "10.1234/openalex-success",
+            "10.1234/openalex-unresolved",
+            "10.1234/openalex-failure",
+        ]
+        assert "OpenAlex fallback attempts: 3" in monitoring
+        assert "OpenAlex papers with affiliations: 1" in monitoring
+        assert "OpenAlex unresolved or empty results: 1" in monitoring
+        assert "OpenAlex affiliation failures: 1" in monitoring
+        assert (
+            "DOI-only affiliations unknown after all enabled sources: 2" in monitoring
+        )
 
     def test_doi_only_terminal_failure_retains_unknown_and_reports_title(self):
         semantic_scholar = MagicMock()
@@ -317,10 +569,11 @@ class TestArxivHtmlAffiliationFetcher:
         assert "Semantic Scholar affiliation failures: 1" in monitoring
         assert "DOI-only Semantic Scholar paper" in monitoring
 
-    def test_arxiv_candidate_never_uses_semantic_scholar_fallback(self):
+    def test_arxiv_candidate_never_uses_doi_only_fallbacks(self):
         semantic_scholar = MagicMock()
+        openalex = MagicMock()
         url = "https://arxiv.org/html/2401.00000v1"
-        fetcher = self._fetcher({url: AFFIL_HTML}, semantic_scholar)
+        fetcher = self._fetcher({url: AFFIL_HTML}, semantic_scholar, openalex)
         coll = _make_collection(1)
         coll.papers[0].doi = "10.1234/shared"
         coll.papers[0].author_ids = ["semantic-scholar-author"]
@@ -333,12 +586,14 @@ class TestArxivHtmlAffiliationFetcher:
             "Bob Jones": ["Famous Lab", "Other Institute"],
         }
         semantic_scholar.get_authors.assert_not_called()
+        openalex.resolve_by_doi.assert_not_called()
 
     def test_doi_only_candidate_from_another_source_is_not_sent_to_semantic_scholar(
         self,
     ):
         semantic_scholar = MagicMock()
-        fetcher = self._fetcher({}, semantic_scholar)
+        openalex = MagicMock()
+        fetcher = self._fetcher({}, semantic_scholar, openalex)
         coll = _make_doi_only_semantic_scholar_collection()
         coll.papers[0].provenance = ["web_search"]
 
@@ -346,6 +601,7 @@ class TestArxivHtmlAffiliationFetcher:
 
         assert result.papers[0].affiliations is None
         semantic_scholar.get_authors.assert_not_called()
+        openalex.resolve_by_doi.assert_not_called()
 
 
 @patch("mourat.collectors.arxiv_html_affiliations.SemanticScholarClient")
@@ -372,6 +628,30 @@ def test_semantic_scholar_client_receives_explicit_transport_configuration(facto
         backoff_seconds=3.0,
         regular_delay_seconds=0.0,
         jitter_seconds=0.25,
+    )
+
+
+@patch("mourat.collectors.arxiv_html_affiliations.OpenAlexClient")
+def test_openalex_client_receives_explicit_transport_configuration(factory):
+    ArxivHtmlAffiliationFetcher(
+        monitoring_handler=_make_monitoring_handler(),
+        http_client=MagicMock(),
+        semantic_scholar_client=MagicMock(),
+        openalex_user_agent="mourat-test/0.1 (mailto:test@example.com)",
+        openalex_api_key="test-key",
+        openalex_timeout_seconds=12.5,
+        openalex_max_retries=7,
+        openalex_backoff_seconds=3.0,
+        openalex_regular_delay_seconds=0.0,
+    )
+
+    factory.assert_called_once_with(
+        user_agent="mourat-test/0.1 (mailto:test@example.com)",
+        api_key="test-key",
+        timeout_seconds=12.5,
+        max_retries=7,
+        backoff_seconds=3.0,
+        regular_delay_seconds=0.0,
     )
 
 
