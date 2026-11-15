@@ -12,7 +12,6 @@ jitter_seconds: 1.0
 
 # Configure one bulk-search query per research area.
 queries:
-  - "large language model"
   - "wireless communication"
   - "wireless network"
   - "mobile network"
