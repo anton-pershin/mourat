@@ -111,6 +111,15 @@ def test_newest_pipeline_documents_affiliation_fallbacks() -> None:
     assert "DOI-only papers retain unknown affiliations" not in section
 
 
+def test_newest_pipeline_documents_semantic_scholar_failure_continuation() -> None:
+    section = _script_section("collect_newest_papers")
+    normalized = " ".join(section.split())
+    assert "continues with an empty Semantic Scholar collection" in normalized
+    assert "arXiv papers still pass through the merge" in normalized
+    assert "adds no new provider IDs to the ledger" in normalized
+    assert "does not change existing entries" in normalized
+
+
 def test_readme_describes_shared_architecture_and_operation() -> None:
     """The README identifies shared modules and basic operating controls."""
     required_text = (

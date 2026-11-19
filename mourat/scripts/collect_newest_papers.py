@@ -1,6 +1,7 @@
 """Collect newest papers from configured sources, process them, and write output.
 
-Entry point for the newest-papers paper collection pipeline (specs 14, 28, 36, and 38):
+Entry point for the newest-papers paper collection pipeline (specs 14, 28, 36, 38,
+and 41):
 
     research attributes (loaded from the DB by configured id)
       -> arXiv RSS and/or Semantic Scholar publication-date collectors
@@ -178,7 +179,15 @@ def _collect_semantic_scholar(
     collector: SemanticScholarNewestPaperCollector = hydra.utils.instantiate(
         semantic_scholar_cfg
     )(monitoring_handler, http_client)
-    collection: PaperCandidateCollection = collector({}, step_id="1-semantic_scholar")
+    collection: PaperCandidateCollection
+    try:
+        collection = collector({}, step_id="1-semantic_scholar")
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Semantic Scholar newest-paper collection failed; "
+            "continuing with candidates from other sources"
+        )
+        return PaperCandidateCollection(papers=[])
     logger.info(
         "Semantic Scholar contributed %d papers before ledger and identity filters",
         len(collection.papers),
