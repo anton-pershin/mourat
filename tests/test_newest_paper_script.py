@@ -5,6 +5,7 @@ components (mocked HTTP, FunctionModel LLMs) — no network anywhere.
 """
 
 import json
+import logging
 import os
 import sqlite3
 import sys
@@ -124,18 +125,41 @@ def _llm_factory(scripted, prompts=None):
 
 
 class TestScriptWiring:
-    def test_full_chain_with_mocks(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize(
+        "semantic_scholar_fails",
+        [False, True],
+        ids=["arxiv-only", "semantic-scholar-http-429"],
+    )
+    def test_full_chain_with_mocks(
+        self, tmp_path, monkeypatch, caplog, semantic_scholar_fails
+    ):
         conn, dbfile = _init_db(tmp_path)
+        if semantic_scholar_fails:
+            from mourat.database.paper_identity import (
+                record_semantic_scholar_processed,
+            )
+
+            record_semantic_scholar_processed(conn, ["already-seen"])
         conn.close()
 
-        cfg = _hydra_cfg(
-            tmp_path,
-            dbfile,
-            overrides=[
-                "db_writer.enabled=true",
-                "feeds.cs_lg.api_url=http://fake/rss",
-            ],
-        )
+        overrides = [
+            "db_writer.enabled=true",
+            "feeds.cs_lg.api_url=http://fake/rss",
+        ]
+        if semantic_scholar_fails:
+            overrides.extend(
+                [
+                    "++sources=[arxiv,semantic_scholar]",
+                    "semantic_scholar_newest.api_url=http://fake/ss",
+                    "semantic_scholar_newest.queries=[query]",
+                    "semantic_scholar_newest.reference_date=2024-02-01",
+                    "semantic_scholar_newest.max_retries=0",
+                    "semantic_scholar_newest.regular_delay_seconds=0",
+                    "semantic_scholar_newest.backoff_seconds=0",
+                    "semantic_scholar_newest.jitter_seconds=0",
+                ]
+            )
+        cfg = _hydra_cfg(tmp_path, dbfile, overrides=overrides)
 
         scripted = [
             # triage: paper_0 true, paper_1 false
@@ -185,18 +209,21 @@ class TestScriptWiring:
             fake_create_connection,
         )
 
+        from types import SimpleNamespace
+
+        import httpx as real_httpx
+
         fake_client = MagicMock()
 
         def get_side_effect(url, **kwargs):
+            if semantic_scholar_fails and url == "http://fake/ss/paper/search/bulk":
+                request = real_httpx.Request("GET", url)
+                return real_httpx.Response(429, request=request)
             return _FakeResponse(
                 SAMPLE_FEED if url == "http://fake/rss" else AFFIL_HTML
             )
 
         fake_client.get.side_effect = get_side_effect
-
-        from types import SimpleNamespace
-
-        import httpx as real_httpx
 
         monkeypatch.setattr(
             "mourat.scripts.collect_newest_papers.httpx",
@@ -234,6 +261,8 @@ class TestScriptWiring:
 
         from mourat.scripts.collect_newest_papers import collect_newest_papers_main
 
+        if semantic_scholar_fails:
+            caplog.set_level(logging.INFO)
         collect_newest_papers_main(cfg)
 
         # JSONL written (jsonl_writer enabled by default)
@@ -252,6 +281,39 @@ class TestScriptWiring:
         assert item is not None
         assert item["influence_score"] == 88
         assert item["influence_metric_id"] == "authority"
+
+        if semantic_scholar_fails:
+            failure = next(
+                record
+                for record in caplog.records
+                if record.name == "mourat"
+                and "Semantic Scholar newest-paper collection failed"
+                in record.getMessage()
+            )
+            assert failure.levelno == logging.ERROR
+            assert "continuing with candidates from other sources" in (
+                failure.getMessage()
+            )
+            assert failure.exc_info is not None
+            assert failure.exc_info[0] is real_httpx.HTTPStatusError
+            assert "429" in caplog.text
+            assert "arXiv collected: 2" in caplog.text
+            assert "Semantic Scholar collected: 0" in caplog.text
+            assert (
+                sum(
+                    call.args[0] == "http://fake/ss/paper/search/bulk"
+                    for call in fake_client.get.call_args_list
+                )
+                == 1
+            )
+
+            from mourat.database.paper_identity import (
+                list_semantic_scholar_ledger_ids,
+            )
+
+            ledger_conn = _init(dbfile)
+            assert list_semantic_scholar_ledger_ids(ledger_conn) == {"already-seen"}
+            ledger_conn.close()
 
     def test_both_writers_off_writes_nothing(self, tmp_path, monkeypatch):
         # T15: both off = both off; nothing written, no error
@@ -422,6 +484,42 @@ class TestScriptWiring:
         out = Path(cfg.jsonl_output_path)
         assert out.exists()
         assert len(out.read_text().strip().splitlines()) == 1
+
+
+def test_semantic_scholar_failure_falls_back_without_hiding_construction_errors(
+    monkeypatch, caplog
+):
+    from omegaconf import OmegaConf
+
+    from mourat.scripts import collect_newest_papers as script
+
+    cfg = OmegaConf.create({"semantic_scholar_newest": {"queries": ["query"]}})
+    monitoring = _DummyMonitoring()
+    collector = MagicMock(side_effect=RuntimeError("terminal provider failure"))
+    factory = MagicMock(return_value=collector)
+    monkeypatch.setattr(script, "_make_http_client", lambda **kwargs: MagicMock())
+    monkeypatch.setattr(script.hydra.utils, "instantiate", lambda cfg: factory)
+    caplog.set_level(logging.ERROR, logger="mourat")
+
+    result = script._collect_semantic_scholar(cfg, monitoring)
+
+    assert isinstance(result, PaperCandidateCollection)
+    assert result.papers == []
+    collector.assert_called_once_with({}, step_id="1-semantic_scholar")
+    failure = next(
+        record
+        for record in caplog.records
+        if record.name == "mourat"
+        and "Semantic Scholar newest-paper collection failed" in record.getMessage()
+    )
+    assert failure.levelno == logging.ERROR
+    assert "continuing with candidates from other sources" in failure.getMessage()
+    assert failure.exc_info is not None
+    assert failure.exc_info[0] is RuntimeError
+
+    factory.side_effect = ValueError("invalid collector configuration")
+    with pytest.raises(ValueError, match="invalid collector configuration"):
+        script._collect_semantic_scholar(cfg, monitoring)
 
 
 class _SemanticScholarResponse:

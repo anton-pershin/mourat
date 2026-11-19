@@ -72,12 +72,12 @@ The fallback belongs in Mourat's `_collect_semantic_scholar` source adapter, aro
 
 #### 3.3 Todo list
 
-1. [ ] Add spec 41 and align spec 28 FR5 and AC3 with the new source-failure policy.
-2. [ ] Add the HTTP 429 full-pipeline and source-boundary regression tests and confirm that they fail before implementation.
-3. [ ] Add the narrow Semantic Scholar invocation fallback and contextual error log.
-4. [ ] Document continuation, ledger safety, and recovery in the README and documentation tests.
-5. [ ] Run focused tests, the complete suite, formatting, import-order, lint, and type checks.
-6. [ ] Review the spec against the implementation, commit and push the assigned branch, and open one draft pull request.
+1. [x] Add spec 41 and align spec 28 FR5 and AC3 with the new source-failure policy.
+2. [x] Add the HTTP 429 full-pipeline and source-boundary regression tests and confirm that they fail before implementation.
+3. [x] Add the narrow Semantic Scholar invocation fallback and contextual error log.
+4. [x] Document continuation, ledger safety, and recovery in the README and documentation tests.
+5. [x] Run focused tests, the complete suite, formatting, import-order, lint, and type checks.
+6. [x] Review the spec against the implementation, commit and push the assigned branch, and open one draft pull request.
 
 #### 3.4 Modification summary
 

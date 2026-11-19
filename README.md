@@ -162,6 +162,12 @@ ledger, identity merging, and persistence.
   include earlier dates after a failed run or to find late-indexed papers.
 - The collector follows every continuation token by default.
   `max_results_per_query` can set a positive local cap. Reaching the cap is reported.
+- If Semantic Scholar collection fails after its bounded retries, Mourat logs the
+  exception with a traceback and continues with an empty Semantic Scholar collection.
+  Successfully collected arXiv papers still pass through the merge, processing stages,
+  and enabled writers. The failed collection adds no new provider IDs to the ledger
+  and does not change existing entries. A later run can retry the window with the
+  existing reference-date and backfill controls.
 - A SQLite ledger records Semantic Scholar provider IDs after all enabled writers
   return. Later overlapping runs exclude these IDs before triage, including IDs of
   papers previously rejected as irrelevant. A failure before the final ledger step
