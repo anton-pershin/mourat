@@ -28,9 +28,13 @@ def _format_author_details(paper: PaperCandidate) -> str:
     affiliations = getattr(paper, "affiliations", None) or {}
     entries = []
     for author in paper.authors:
-        institutions = affiliations.get(author) or []
+        institutions = [
+            institution.strip()
+            for institution in affiliations.get(author) or []
+            if institution.strip() and institution.strip().casefold() != "unknown"
+        ]
         affiliation_text = (
-            ", ".join(institutions) if institutions else "affiliations unknown"
+            ", ".join(institutions) if institutions else "affiliation data not supplied"
         )
         entries.append(f"{author} ({affiliation_text})")
     return f"  Authors: {'; '.join(entries)}"

@@ -883,11 +883,51 @@ class TestAuthorityInfluenceAssessor:
             "Bob (Industrial Lab)\n"
             "  Rationale: Alice is a famous ML researcher.\n"
             "- 2401.00001 | Paper B | score: 85\n"
-            "  Authors: Carol (affiliations unknown)\n"
+            "  Authors: Carol (affiliation data not supplied)\n"
             "  Rationale: This industrial lab is unknown to the professional "
             "community."
         )
         assert expected in report
+
+    def test_monitoring_distinguishes_missing_affiliation_data_from_model_knowledge(
+        self,
+    ):
+        authors = [
+            "Luo-Heng Yan",
+            "Qiong-Yao Zhang",
+            "Zhong-Min Huangfu",
+            "Da-Chun Shangguan",
+        ]
+        rationale = (
+            "All authors are affiliated with North China University of Water "
+            "Resources and Electric Power, a legitimate but not internationally "
+            "prominent institution."
+        )
+
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            return ModelResponse(
+                parts=[TextPart(_verdicts_json(ids, score=35, rationale=rationale))]
+            )
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(1)
+        coll.papers[0].authors = authors
+        coll.papers[0].affiliations = {author: ["unknown"] for author in authors}
+
+        assessor(coll, "t")
+
+        report = handler.calls[-1][1]
+        expected_authors = "; ".join(
+            f"{author} (affiliation data not supplied)" for author in authors
+        )
+        assert f"  Authors: {expected_authors}" in report
+        assert "(unknown)" not in report
+        assert f"  Rationale: {rationale}" in report
 
     @pytest.mark.parametrize("rationale", [None, " \n"])
     def test_monitoring_marks_missing_authors_and_optional_rationale(self, rationale):
@@ -936,7 +976,7 @@ class TestAuthorityInfluenceAssessor:
         report = handler.calls[-1][1]
         assert (
             "- 2401.00000 | Paper A | unassessable: missing verdict\n"
-            "  Authors: Alice (affiliations unknown)"
+            "  Authors: Alice (affiliation data not supplied)"
         ) in report
         assert "Rationale:" not in report
         assert (
