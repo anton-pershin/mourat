@@ -879,11 +879,13 @@ class TestAuthorityInfluenceAssessor:
         report = handler.calls[-1][1]
         expected = (
             "- 2401.00000 | Paper A | score: 0\n"
-            "  Authors: Alice (Famous ML Lab, Example University); "
-            "Bob (Industrial Lab)\n"
+            "  Authors: ['Alice', 'Bob']\n"
+            "  Affiliations: Alice: Famous ML Lab, Example University; "
+            "Bob: Industrial Lab\n"
             "  Rationale: Alice is a famous ML researcher.\n"
             "- 2401.00001 | Paper B | score: 85\n"
-            "  Authors: Carol (affiliation data not supplied)\n"
+            "  Authors: ['Carol']\n"
+            "  Affiliations: unknown\n"
             "  Rationale: This industrial lab is unknown to the professional "
             "community."
         )
@@ -907,9 +909,12 @@ class TestAuthorityInfluenceAssessor:
             f"All authors are affiliated with {institution}, a legitimate but "
             "not internationally prominent institution."
         )
+        prompts = []
 
         def model_fn(messages, agent):
-            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            prompt = messages[-1].parts[-1].content
+            prompts.append(prompt)
+            ids = _ids_in_prompt(prompt)
             return ModelResponse(
                 parts=[TextPart(_verdicts_json(ids, score=35, rationale=rationale))]
             )
@@ -934,13 +939,20 @@ class TestAuthorityInfluenceAssessor:
         assessor(coll, "t")
 
         report = handler.calls[-1][1]
-        expected_authors = [
-            *(f"{author} (affiliation data not supplied)" for author in authors),
-            *(f"{name} ({institution})" for name in provider_names),
-        ]
-        assert f"  Authors: {'; '.join(expected_authors)}" in report
-        assert "(unknown)" not in report
-        assert f"  Rationale: {rationale}" in report
+        expected_affiliations = "; ".join(
+            [
+                *(f"{author}: unknown" for author in authors),
+                *(f"{name}: {institution}" for name in provider_names),
+            ]
+        )
+        assert (
+            f"  Authors: {authors!r}\n"
+            f"  Affiliations: {expected_affiliations}\n"
+            f"  Rationale: {rationale}"
+        ) in report
+        assert (
+            f'"authors": {authors!r}, "affiliations": "{expected_affiliations}"'
+        ) in prompts[0]
 
     @pytest.mark.parametrize("rationale", [None, " \n"])
     def test_monitoring_marks_missing_authors_and_optional_rationale(self, rationale):
@@ -964,7 +976,8 @@ class TestAuthorityInfluenceAssessor:
         assert result.papers[0].influence_score == 35
         assert (
             "- 2401.00000 | Paper A | score: 35\n"
-            "  Authors: unknown\n"
+            "  Authors: []\n"
+            "  Affiliations: unknown\n"
             "  Rationale: not provided"
         ) in report
 
@@ -989,7 +1002,8 @@ class TestAuthorityInfluenceAssessor:
         report = handler.calls[-1][1]
         assert (
             "- 2401.00000 | Paper A | unassessable: missing verdict\n"
-            "  Authors: Alice (affiliation data not supplied)"
+            "  Authors: ['Alice']\n"
+            "  Affiliations: unknown"
         ) in report
         assert "Rationale:" not in report
         assert (

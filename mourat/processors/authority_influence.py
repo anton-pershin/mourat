@@ -22,31 +22,16 @@ __all__ = ["AuthorityInfluenceAssessor", "AuthorityResult", "AuthorityVerdict"]
 
 
 def _format_author_details(paper: PaperCandidate) -> str:
-    """Render candidate and provider-only authors with known affiliations."""
-    affiliations = getattr(paper, "affiliations", None) or {}
-    candidate_authors = list(paper.authors)
-    candidate_author_names = set(candidate_authors)
-    ordered_authors = candidate_authors + [
-        author
-        for author in affiliations
-        if author and author not in candidate_author_names
-    ]
-    entries = []
-    for author in ordered_authors:
-        institutions = [
-            institution.strip()
-            for institution in affiliations.get(author) or []
-            if institution.strip() and institution.strip().casefold() != "unknown"
-        ]
-        if not institutions and author not in candidate_author_names:
-            continue
-        affiliation_text = (
-            ", ".join(institutions) if institutions else "affiliation data not supplied"
+    """Render authors and affiliations exactly as the core prompt sees them."""
+    affiliations = getattr(paper, "affiliations", None)
+    if affiliations:
+        affiliation_text = "; ".join(
+            f"{author}: {', '.join(institutions)}"
+            for author, institutions in affiliations.items()
         )
-        entries.append(f"{author} ({affiliation_text})")
-    if not entries:
-        return "  Authors: unknown"
-    return f"  Authors: {'; '.join(entries)}"
+    else:
+        affiliation_text = "unknown"
+    return f"  Authors: {paper.authors!r}\n  Affiliations: {affiliation_text}"
 
 
 class AuthorityInfluenceAssessor(
