@@ -889,19 +889,23 @@ class TestAuthorityInfluenceAssessor:
         )
         assert expected in report
 
-    def test_monitoring_distinguishes_missing_affiliation_data_from_model_knowledge(
-        self,
-    ):
+    def test_monitoring_includes_provider_only_author_affiliations(self):
         authors = [
             "Luo-Heng Yan",
             "Qiong-Yao Zhang",
             "Zhong-Min Huangfu",
             "Da-Chun Shangguan",
         ]
+        provider_names = [
+            "Yan Luoheng",
+            "Qiongyao Zhang",
+            "Zhongmin Huangfu",
+            "Dachun Shangguan",
+        ]
+        institution = "North China University of Water Resources and Electric Power"
         rationale = (
-            "All authors are affiliated with North China University of Water "
-            "Resources and Electric Power, a legitimate but not internationally "
-            "prominent institution."
+            f"All authors are affiliated with {institution}, a legitimate but "
+            "not internationally prominent institution."
         )
 
         def model_fn(messages, agent):
@@ -916,16 +920,25 @@ class TestAuthorityInfluenceAssessor:
             model=FunctionModel(model_fn),
         )
         coll = _make_collection(1)
-        coll.papers[0].authors = authors
-        coll.papers[0].affiliations = {author: ["unknown"] for author in authors}
+        paper = coll.papers[0]
+        paper.authors = authors
+        paper.author_ids = [None] * len(authors)
+        paper.affiliations = ArxivHtmlAffiliationFetcher._affiliations_by_author(
+            paper,
+            [
+                AuthorRecord(name=name, affiliations=[institution])
+                for name in provider_names
+            ],
+        )
 
         assessor(coll, "t")
 
         report = handler.calls[-1][1]
-        expected_authors = "; ".join(
-            f"{author} (affiliation data not supplied)" for author in authors
-        )
-        assert f"  Authors: {expected_authors}" in report
+        expected_authors = [
+            *(f"{author} (affiliation data not supplied)" for author in authors),
+            *(f"{name} ({institution})" for name in provider_names),
+        ]
+        assert f"  Authors: {'; '.join(expected_authors)}" in report
         assert "(unknown)" not in report
         assert f"  Rationale: {rationale}" in report
 

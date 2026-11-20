@@ -4,7 +4,7 @@
 
 This spec implements approved GitHub issue #43. It uses the optional verdict rationale and structured assessment result supplied by `anton-pershin/comourat#30` and merged in `anton-pershin/comourat#31`.
 
-**R1 — Author and affiliation details.** For every paper in the `AuthorityInfluenceAssessor` monitoring report, retain the existing identifier, title, and score or unassessable reason, and add the paper's authors with their affiliations. Preserve candidate author order. List every known affiliation for each author. When no usable collected value is available, report `affiliation data not supplied`; this describes the input metadata and does not deny that the model may know an affiliation from its own knowledge. Treat the stored `unknown` sentinel and blank values as missing data. Mark the author list as unknown when the candidate has no authors.
+**R1 — Author and affiliation details.** For every paper in the `AuthorityInfluenceAssessor` monitoring report, retain the existing identifier, title, and score or unassessable reason, and add the paper's authors with their affiliations. Preserve candidate author order. List every known affiliation for each author. Include provider-supplied author names that occur only in the affiliation mapping after the candidate-author entries; these names can carry the affiliations when a provider's display name differs from the candidate's retained name. Never discard those entries or their affiliations. When no usable collected value is available for a candidate author, report `affiliation data not supplied` and treat the stored `unknown` sentinel and blank values as missing data. Mark the author list as unknown only when neither the candidate nor the affiliation mapping supplies an author name.
 
 **R2 — Score explanations.** For every successfully scored paper, including a paper with score 0, add the optional `rationale` from the `AuthorityVerdict` returned by `AuthorityInfluenceAssessorCore.assess()`. Match the verdict to the candidate through the existing `paper_<index>` ID. If the validated verdict has no rationale or has a blank rationale, report `Rationale: not provided`; do not change the score or make the paper unassessable.
 
@@ -16,16 +16,17 @@ Expected behavior variants:
 
 - **B1 — Explained score.** A scored paper has authors, known affiliations, and a rationale; all appear next to its existing assessment line.
 - **B2 — Valid zero score.** A validated score-0 verdict receives the same author, affiliation, and rationale details as any other scored paper.
-- **B3 — Missing affiliations or authors.** Missing collected affiliation data and an empty author list are explicit in monitoring and do not affect assessment. A rationale may still mention an institution known to the model without contradicting the metadata status.
+- **B3 — Missing affiliations or authors.** Missing collected affiliation data and an empty author list are explicit in monitoring and do not affect assessment.
 - **B4 — Missing optional rationale.** A scored verdict without a rationale remains scored and reports `Rationale: not provided`.
 - **B5 — Unassessable paper.** A missing or failed verdict keeps its existing reason, includes author and affiliation details, and has no rationale line.
+- **B6 — Provider name differs.** The affiliation mapping contains provider-only display names with known affiliations alongside candidate names without usable data. Monitoring retains both groups in their existing order, so the rationale's institution evidence is visible.
 
 ### 2. Tests
 
 - **T1 — Detailed scored papers.** Covers R1, R2, R4, B1, and B2. Assess two papers with different rationales. Give one paper several authors and affiliations and a score of 0; give the other paper no affiliation data. Assert the exact adjacent assessment, author, and rationale lines, including author order and all affiliations.
 - **T2 — Optional rationale and empty authors.** Covers R1, R2, B3, and B4. Assess papers with no authors and valid verdicts with an omitted or blank rationale. Assert `Authors: unknown`, `Rationale: not provided`, and retention of the scores.
 - **T3 — Unassessable details.** Covers R1, R3, B3, and B5. Omit a paper's verdict. Assert its existing unassessable reason, its author details with missing collected affiliation data, no rationale line, and the unchanged aggregate summary.
-- **T4 — Missing-data wording with model knowledge.** Covers R1, R2, B1, and B3. Use authors whose stored affiliation values are the `unknown` sentinel and a rationale that names an institution. Assert that monitoring reports `affiliation data not supplied` for each author, retains the rationale, and never presents the sentinel as an affiliation.
+- **T4 — Provider-only names retain affiliation evidence.** Covers R1, R2, B1, B3, and B6. Reproduce the reviewed DOI example: candidate names differ from OpenAlex display names, and the real affiliation-mapping behavior retains both groups. Assert that monitoring shows missing data for the candidate names and the institution for every provider-only name, retains the rationale, and never presents the `unknown` sentinel as an affiliation.
 - **T5 — Regression coverage.** Covers R1 through R4 and all variants. Run the authority-assessor tests and the complete test suite. Confirm existing score matching, batch splitting, retries, stable identifiers, zero-score handling, and summary retention remain valid. Run formatting, import-order, lint, and type checks for the touched code.
 
 ### 3. Implementation plan
@@ -74,7 +75,7 @@ flowchart LR
   style E fill:#fff0dc,stroke:#e67e22,stroke-width:4px
 ```
 
-The adapter consumes the three-value `assess()` result. It inserts an indented `Authors:` line after every existing per-paper assessment line. For a paper with a validated verdict, it also inserts an indented `Rationale:` line. Missing collected affiliations, including the stored `unknown` sentinel, render as `affiliation data not supplied` so the metadata status does not contradict model knowledge expressed in the rationale. The adapter leaves the aggregate lines and all assessment decisions unchanged.
+The adapter consumes the three-value `assess()` result. It inserts an indented `Authors:` line after every existing per-paper assessment line. For a paper with a validated verdict, it also inserts an indented `Rationale:` line. Missing collected affiliations, including the stored `unknown` sentinel, render as `affiliation data not supplied`. The renderer includes provider-only names with usable affiliations after the candidate-author entries, matching the full mapping sent to the LLM and keeping the rationale's evidence visible. The adapter leaves the aggregate lines and all assessment decisions unchanged.
 
 #### 3.3 Todo list
 
