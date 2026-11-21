@@ -11,13 +11,27 @@ from comourat.influence.authority import (
     AuthorityResult,
     AuthorityVerdict,
 )
-from comourat.models import PaperCandidateCollection
+from comourat.models import PaperCandidate, PaperCandidateCollection
+
 from mourat.base import Function
 from mourat.monitoring import MonitoringHandler
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["AuthorityInfluenceAssessor", "AuthorityResult", "AuthorityVerdict"]
+
+
+def _format_author_details(paper: PaperCandidate) -> str:
+    """Render authors and affiliations exactly as the core prompt sees them."""
+    affiliations = getattr(paper, "affiliations", None)
+    if affiliations:
+        affiliation_text = "; ".join(
+            f"{author}: {', '.join(institutions)}"
+            for author, institutions in affiliations.items()
+        )
+    else:
+        affiliation_text = "unknown"
+    return f"  Authors: {paper.authors!r}\n  Affiliations: {affiliation_text}"
 
 
 class AuthorityInfluenceAssessor(
@@ -61,5 +75,14 @@ class AuthorityInfluenceAssessor(
             for i, paper in enumerate(data.papers)
             if (affs := getattr(paper, "affiliations", None))
         }
-        output, lines = self.core.assess(data, affiliations)
-        return output, "\n".join(lines)
+        output, lines, verdicts_by_id = self.core.assess(data, affiliations)
+        detailed_lines = [lines[0]]
+        for index, paper in enumerate(output.papers):
+            detailed_lines.append(lines[index + 1])
+            detailed_lines.append(_format_author_details(paper))
+            verdict = verdicts_by_id.get(f"paper_{index}")
+            if verdict is not None:
+                rationale = " ".join((verdict.rationale or "").split())
+                detailed_lines.append(f"  Rationale: {rationale or 'not provided'}")
+        detailed_lines.extend(lines[len(output.papers) + 1 :])
+        return output, "\n".join(detailed_lines)

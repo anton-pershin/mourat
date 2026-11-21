@@ -79,16 +79,21 @@ def _run_with_handler(component, data):
     return output, component.monitoring_handler.calls[-1][1]
 
 
-def _verdicts_json(ids: list[str], score=None, relevant=None, skip=None):
+def _verdicts_json(
+    ids: list[str], score=None, relevant=None, skip=None, rationale=None
+):
     """Build a TriageResult/AuthorityResult JSON for the given ids."""
     verdicts = []
     for pid in ids:
         if skip is not None and pid in skip:
             continue
         if score is not None:
-            verdicts.append(
-                {"id": pid, "score": score(pid) if callable(score) else score}
-            )
+            verdict = {"id": pid, "score": score(pid) if callable(score) else score}
+            if rationale is not None:
+                verdict["rationale"] = (
+                    rationale(pid) if callable(rationale) else rationale
+                )
+            verdicts.append(verdict)
         else:
             verdicts.append(
                 {
@@ -834,6 +839,176 @@ class TestAuthorityInfluenceAssessor:
         assert "10.1234/example | Paper B | unassessable: missing verdict" in report
         assert "after retries" not in report
         assert "Papers: 2, scored: 1, zero-scored (unassessable or failed): 1" in report
+
+    def test_monitoring_includes_authors_affiliations_and_rationales(self):
+        rationales = {
+            "paper_0": "Alice is a famous ML researcher.",
+            "paper_1": "This industrial lab is unknown to the professional community.",
+        }
+
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        _verdicts_json(
+                            ids,
+                            score=lambda pid: 0 if pid == "paper_0" else 85,
+                            rationale=lambda pid: rationales[pid],
+                        )
+                    )
+                ]
+            )
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(2)
+        coll.papers[0].authors = ["Alice", "Bob"]
+        coll.papers[0].affiliations = {
+            "Alice": ["Famous ML Lab", "Example University"],
+            "Bob": ["Industrial Lab"],
+        }
+        coll.papers[1].authors = ["Carol"]
+        coll.papers[1].affiliations = None
+
+        assessor(coll, "t")
+
+        report = handler.calls[-1][1]
+        expected = (
+            "- 2401.00000 | Paper A | score: 0\n"
+            "  Authors: ['Alice', 'Bob']\n"
+            "  Affiliations: Alice: Famous ML Lab, Example University; "
+            "Bob: Industrial Lab\n"
+            "  Rationale: Alice is a famous ML researcher.\n"
+            "- 2401.00001 | Paper B | score: 85\n"
+            "  Authors: ['Carol']\n"
+            "  Affiliations: unknown\n"
+            "  Rationale: This industrial lab is unknown to the professional "
+            "community."
+        )
+        assert expected in report
+
+    def test_monitoring_includes_provider_only_author_affiliations(self):
+        authors = [
+            "Luo-Heng Yan",
+            "Qiong-Yao Zhang",
+            "Zhong-Min Huangfu",
+            "Da-Chun Shangguan",
+        ]
+        provider_names = [
+            "Yan Luoheng",
+            "Qiongyao Zhang",
+            "Zhongmin Huangfu",
+            "Dachun Shangguan",
+        ]
+        institution = "North China University of Water Resources and Electric Power"
+        rationale = (
+            f"All authors are affiliated with {institution}, a legitimate but "
+            "not internationally prominent institution."
+        )
+        prompts = []
+
+        def model_fn(messages, agent):
+            prompt = messages[-1].parts[-1].content
+            prompts.append(prompt)
+            ids = _ids_in_prompt(prompt)
+            return ModelResponse(
+                parts=[TextPart(_verdicts_json(ids, score=35, rationale=rationale))]
+            )
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(1)
+        paper = coll.papers[0]
+        paper.authors = authors
+        paper.author_ids = [None] * len(authors)
+        paper.affiliations = ArxivHtmlAffiliationFetcher._affiliations_by_author(
+            paper,
+            [
+                AuthorRecord(name=name, affiliations=[institution])
+                for name in provider_names
+            ],
+        )
+
+        assessor(coll, "t")
+
+        report = handler.calls[-1][1]
+        expected_affiliations = "; ".join(
+            [
+                *(f"{author}: unknown" for author in authors),
+                *(f"{name}: {institution}" for name in provider_names),
+            ]
+        )
+        assert (
+            f"  Authors: {authors!r}\n"
+            f"  Affiliations: {expected_affiliations}\n"
+            f"  Rationale: {rationale}"
+        ) in report
+        assert (
+            f'"authors": {authors!r}, "affiliations": "{expected_affiliations}"'
+        ) in prompts[0]
+
+    @pytest.mark.parametrize("rationale", [None, " \n"])
+    def test_monitoring_marks_missing_authors_and_optional_rationale(self, rationale):
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            return ModelResponse(
+                parts=[TextPart(_verdicts_json(ids, score=35, rationale=rationale))]
+            )
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(1)
+        coll.papers[0].authors = []
+
+        result = assessor(coll, "t")
+
+        report = handler.calls[-1][1]
+        assert result.papers[0].influence_score == 35
+        assert (
+            "- 2401.00000 | Paper A | score: 35\n"
+            "  Authors: []\n"
+            "  Affiliations: unknown\n"
+            "  Rationale: not provided"
+        ) in report
+
+    def test_unassessable_paper_has_author_details_but_no_rationale(self):
+        def model_fn(messages, agent):
+            ids = _ids_in_prompt(messages[-1].parts[-1].content)
+            return ModelResponse(
+                parts=[TextPart(_verdicts_json(ids, score=50, skip=ids))]
+            )
+
+        handler = _make_monitoring_handler()
+        assessor = AuthorityInfluenceAssessor(
+            monitoring_handler=handler,
+            model=FunctionModel(model_fn),
+        )
+        coll = _make_collection(1)
+        coll.papers[0].authors = ["Alice"]
+        coll.papers[0].affiliations = None
+
+        assessor(coll, "t")
+
+        report = handler.calls[-1][1]
+        assert (
+            "- 2401.00000 | Paper A | unassessable: missing verdict\n"
+            "  Authors: ['Alice']\n"
+            "  Affiliations: unknown"
+        ) in report
+        assert "Rationale:" not in report
+        assert (
+            "Papers: 1, scored: 0, zero-scored (unassessable or failed): 1"
+        ) in report
 
     def test_papers_without_source_ids_get_stable_content_identifiers(self):
         def model_fn(messages, agent):
